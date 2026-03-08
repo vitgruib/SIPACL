@@ -1,0 +1,25 @@
+name: format
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Run black to check formatting
+        uses: psf/black@stable
+        with:
+          version: "25.1.0"
+
+      - name: Run isort to check import order
+        uses: isort/isort-action@v1
+        with:
+          isort-version: "5.12.0"
