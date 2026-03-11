@@ -31,7 +31,7 @@ htmlcov/
 Work/runs/
 Work/buffer/
 Work/scenarios/controllers
-Work/policy/runs_results.xlsx
+# Work/policy/runs_results.xlsx
 Work/policy/runs_visualization.png
 
 # Profiling / other run data
@@ -70,6 +70,6 @@ Desktop.ini
 logs/
 
 # Large or generated
-*.pt
+# *.pt
 *.pth
 *.onnx
