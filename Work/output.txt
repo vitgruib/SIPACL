@@ -1,0 +1,907 @@
+========== replay_resample_prob=-1 ==========
+Training: total_timesteps=5000, batch_size=4096, num_iterations=1 -> actual steps = 4096, replay_resample_prob=-1.0
+self loop doesnt exist, creating new one
+progress: 1% (50/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8374, length=89, global_step=89
+reset exception caught
+progress: 2% (100/5000)
+progress: 3% (150/5000)
+progress: 4% (200/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0783, length=120, global_step=209
+reset exception caught
+progress: 5% (250/5000)
+progress: 6% (300/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9954, length=118, global_step=327
+reset exception caught
+progress: 7% (350/5000)
+progress: 8% (400/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.5744, length=87, global_step=414
+reset exception caught
+progress: 9% (450/5000)
+progress: 10% (500/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6703, length=121, global_step=535
+reset exception caught
+progress: 11% (550/5000)
+progress: 12% (600/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2189, length=91, global_step=626
+reset exception caught
+progress: 13% (650/5000)
+progress: 14% (700/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6074, length=107, global_step=733
+reset exception caught
+progress: 15% (750/5000)
+progress: 16% (800/5000)
+progress: 17% (850/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6618, length=118, global_step=851
+reset exception caught
+progress: 18% (900/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.4241, length=93, global_step=944
+reset exception caught
+progress: 19% (950/5000)
+progress: 20% (1000/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.4654, length=84, global_step=1028
+reset exception caught
+progress: 21% (1050/5000)
+progress: 22% (1100/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6953, length=93, global_step=1121
+reset exception caught
+progress: 23% (1150/5000)
+progress: 24% (1200/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6359, length=97, global_step=1218
+reset exception caught
+progress: 25% (1250/5000)
+progress: 26% (1300/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7839, length=93, global_step=1311
+reset exception caught
+progress: 27% (1350/5000)
+progress: 28% (1400/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7988, length=118, global_step=1429
+reset exception caught
+progress: 29% (1450/5000)
+progress: 30% (1500/5000)
+progress: 31% (1550/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.1521, length=122, global_step=1551
+reset exception caught
+progress: 32% (1600/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.9529, length=90, global_step=1641
+reset exception caught
+progress: 33% (1650/5000)
+progress: 34% (1700/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.7377, length=91, global_step=1732
+reset exception caught
+progress: 35% (1750/5000)
+progress: 36% (1800/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4638, length=102, global_step=1834
+reset exception caught
+progress: 37% (1850/5000)
+progress: 38% (1900/5000)
+progress: 39% (1950/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7785, length=119, global_step=1953
+reset exception caught
+progress: 40% (2000/5000)
+progress: 41% (2050/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.8785, length=122, global_step=2075
+reset exception caught
+progress: 42% (2100/5000)
+progress: 43% (2150/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.0095, length=123, global_step=2198
+reset exception caught
+progress: 44% (2200/5000)
+progress: 45% (2250/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.5561, length=84, global_step=2282
+reset exception caught
+progress: 46% (2300/5000)
+progress: 47% (2350/5000)
+progress: 48% (2400/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7695, length=125, global_step=2407
+reset exception caught
+progress: 49% (2450/5000)
+progress: 50% (2500/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0826, length=123, global_step=2530
+reset exception caught
+progress: 51% (2550/5000)
+progress: 52% (2600/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8506, length=97, global_step=2627
+reset exception caught
+progress: 53% (2650/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.4834, length=37, global_step=2664
+reset exception caught
+progress: 54% (2700/5000)
+progress: 55% (2750/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9086, length=93, global_step=2757
+reset exception caught
+progress: 56% (2800/5000)
+progress: 57% (2850/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6837, length=99, global_step=2856
+reset exception caught
+progress: 58% (2900/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8240, length=93, global_step=2949
+progress: 59% (2950/5000)
+reset exception caught
+progress: 60% (3000/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6465, length=88, global_step=3037
+reset exception caught
+progress: 61% (3050/5000)
+progress: 62% (3100/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0441, length=99, global_step=3136
+reset exception caught
+progress: 63% (3150/5000)
+progress: 64% (3200/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.4140, length=97, global_step=3233
+reset exception caught
+progress: 65% (3250/5000)
+progress: 66% (3300/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0109, length=110, global_step=3343
+reset exception caught
+progress: 67% (3350/5000)
+progress: 68% (3400/5000)
+progress: 69% (3450/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6588, length=129, global_step=3472
+reset exception caught
+progress: 70% (3500/5000)
+progress: 71% (3550/5000)
+progress: 72% (3600/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.1373, length=131, global_step=3603
+reset exception caught
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.0494, length=28, global_step=3631
+reset exception caught
+progress: 73% (3650/5000)
+progress: 74% (3700/5000)
+progress: 75% (3750/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.5261, length=133, global_step=3764
+reset exception caught
+progress: 76% (3800/5000)
+progress: 77% (3850/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4307, length=119, global_step=3883
+reset exception caught
+progress: 78% (3900/5000)
+progress: 79% (3950/5000)
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7567, length=92, global_step=3975
+reset exception caught
+progress: 80% (4000/5000)
+progress: 81% (4050/5000)
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6057, length=113, global_step=4088
+reset exception caught
+SPS: 37
+Run saved: model at /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/runs/ACL_MetaDrive__ppo__1__resample-1.0__1773336805.pt
+reset exception caught
+eval_return: 1.9720274209976196
+reset exception caught
+eval_return: 1.2107954025268555
+reset exception caught
+eval_return: 2.1133313179016113
+reset exception caught
+eval_return: 0.8317867517471313
+reset exception caught
+eval_return: 0.6888299584388733
+reset exception caught
+eval_return: 1.9322724342346191
+reset exception caught
+eval_return: 1.7434097528457642
+reset exception caught
+eval_return: 2.809575080871582
+reset exception caught
+eval_return: 2.7023940086364746
+reset exception caught
+eval_return: 1.0326241254806519
+eval_after_train: ran 10 episodes (same envs as training, max_steps=1000, eval_step_cap=1000)
+Run saved: results appended to /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/policy/runs_results.xlsx
+Run saved.
+========== replay_resample_prob=0.25 ==========
+Training: total_timesteps=5000, batch_size=4096, num_iterations=1 -> actual steps = 4096, replay_resample_prob=0.25
+self loop doesnt exist, creating new one
+progress: 1% (50/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8374, length=89, global_step=89
+reset exception caught
+progress: 2% (100/5000)
+progress: 3% (150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8445, length=90, global_step=179
+reset exception caught
+progress: 4% (200/5000)
+progress: 5% (250/5000)
+progress: 6% (300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.1292, length=128, global_step=307
+reset exception caught
+progress: 7% (350/5000)
+progress: 8% (400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8162, length=127, global_step=434
+reset exception caught
+progress: 9% (450/5000)
+progress: 10% (500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7702, length=106, global_step=540
+reset exception caught
+progress: 11% (550/5000)
+progress: 12% (600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.3279, length=106, global_step=646
+reset exception caught
+progress: 13% (650/5000)
+progress: 14% (700/5000)
+progress: 15% (750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7211, length=123, global_step=769
+reset exception caught
+progress: 16% (800/5000)
+progress: 17% (850/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7284, length=124, global_step=893
+reset exception caught
+progress: 18% (900/5000)
+progress: 19% (950/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7103, length=106, global_step=999
+progress: 20% (1000/5000)
+reset exception caught
+progress: 21% (1050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.2754, length=87, global_step=1086
+reset exception caught
+progress: 22% (1100/5000)
+progress: 23% (1150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8175, length=88, global_step=1174
+reset exception caught
+progress: 24% (1200/5000)
+progress: 25% (1250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6000, length=107, global_step=1281
+reset exception caught
+progress: 26% (1300/5000)
+progress: 27% (1350/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6693, length=108, global_step=1389
+reset exception caught
+progress: 28% (1400/5000)
+progress: 29% (1450/5000)
+progress: 30% (1500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.8028, length=116, global_step=1505
+reset exception caught
+progress: 31% (1550/5000)
+progress: 32% (1600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2669, length=115, global_step=1620
+reset exception caught
+progress: 33% (1650/5000)
+progress: 34% (1700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.0191, length=108, global_step=1728
+reset exception caught
+progress: 35% (1750/5000)
+progress: 36% (1800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.0706, length=87, global_step=1815
+reset exception caught
+progress: 37% (1850/5000)
+progress: 38% (1900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6230, length=109, global_step=1924
+reset exception caught
+progress: 39% (1950/5000)
+progress: 40% (2000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7615, length=84, global_step=2008
+reset exception caught
+progress: 41% (2050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.6659, length=85, global_step=2093
+reset exception caught
+progress: 42% (2100/5000)
+progress: 43% (2150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.6271, length=90, global_step=2183
+reset exception caught
+progress: 44% (2200/5000)
+progress: 45% (2250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6230, length=89, global_step=2272
+reset exception caught
+progress: 46% (2300/5000)
+progress: 47% (2350/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.2849, length=90, global_step=2362
+reset exception caught
+progress: 48% (2400/5000)
+progress: 49% (2450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2894, length=102, global_step=2464
+reset exception caught
+progress: 50% (2500/5000)
+progress: 51% (2550/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.9945, length=97, global_step=2561
+reset exception caught
+progress: 52% (2600/5000)
+progress: 53% (2650/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0296, length=124, global_step=2685
+reset exception caught
+progress: 54% (2700/5000)
+progress: 55% (2750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.3454, length=99, global_step=2784
+reset exception caught
+progress: 56% (2800/5000)
+progress: 57% (2850/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.5741, length=94, global_step=2878
+reset exception caught
+progress: 58% (2900/5000)
+progress: 59% (2950/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7055, length=86, global_step=2964
+reset exception caught
+progress: 60% (3000/5000)
+progress: 61% (3050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7669, length=86, global_step=3050
+reset exception caught
+progress: 62% (3100/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.9367, length=90, global_step=3140
+reset exception caught
+progress: 63% (3150/5000)
+progress: 64% (3200/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.9795, length=90, global_step=3230
+reset exception caught
+progress: 65% (3250/5000)
+progress: 66% (3300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9429, length=88, global_step=3318
+reset exception caught
+progress: 67% (3350/5000)
+progress: 68% (3400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9825, length=88, global_step=3406
+reset exception caught
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.4860, length=39, global_step=3445
+reset exception caught
+progress: 69% (3450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.2878, length=39, global_step=3484
+reset exception caught
+progress: 70% (3500/5000)
+progress: 71% (3550/5000)
+progress: 72% (3600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0260, length=128, global_step=3612
+reset exception caught
+progress: 73% (3650/5000)
+progress: 74% (3700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4063, length=89, global_step=3701
+reset exception caught
+progress: 75% (3750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.5279, length=89, global_step=3790
+reset exception caught
+progress: 76% (3800/5000)
+progress: 77% (3850/5000)
+progress: 78% (3900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.0778, length=123, global_step=3913
+reset exception caught
+progress: 79% (3950/5000)
+progress: 80% (4000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8838, length=123, global_step=4036
+reset exception caught
+progress: 81% (4050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.2044, length=37, global_step=4073
+reset exception caught
+SPS: 37
+Run saved: model at /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/runs/ACL_MetaDrive__ppo__1__resample0.25__1773336950.pt
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.7313354015350342
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.0346438884735107
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.456236481666565
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.7169642448425293
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.1301178932189941
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.7952442765235901
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.0815365314483643
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.0296669006347656
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.936178684234619
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.7986621856689453
+eval_after_train: ran 10 episodes (same envs as training, max_steps=1000, eval_step_cap=1000)
+Run saved: results appended to /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/policy/runs_results.xlsx
+Run saved.
+========== replay_resample_prob=0.5 ==========
+Training: total_timesteps=5000, batch_size=4096, num_iterations=1 -> actual steps = 4096, replay_resample_prob=0.5
+self loop doesnt exist, creating new one
+progress: 1% (50/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8374, length=89, global_step=89
+reset exception caught
+progress: 2% (100/5000)
+progress: 3% (150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8445, length=90, global_step=179
+reset exception caught
+progress: 4% (200/5000)
+progress: 5% (250/5000)
+progress: 6% (300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.1292, length=128, global_step=307
+reset exception caught
+progress: 7% (350/5000)
+progress: 8% (400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8162, length=127, global_step=434
+reset exception caught
+progress: 9% (450/5000)
+progress: 10% (500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7702, length=106, global_step=540
+reset exception caught
+progress: 11% (550/5000)
+progress: 12% (600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.3279, length=106, global_step=646
+reset exception caught
+progress: 13% (650/5000)
+progress: 14% (700/5000)
+progress: 15% (750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7211, length=123, global_step=769
+reset exception caught
+progress: 16% (800/5000)
+progress: 17% (850/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7284, length=124, global_step=893
+reset exception caught
+progress: 18% (900/5000)
+progress: 19% (950/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7103, length=106, global_step=999
+progress: 20% (1000/5000)
+reset exception caught
+progress: 21% (1050/5000)
+progress: 22% (1100/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7543, length=123, global_step=1122
+reset exception caught
+progress: 23% (1150/5000)
+progress: 24% (1200/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.4798, length=87, global_step=1209
+reset exception caught
+progress: 25% (1250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6244, length=88, global_step=1297
+reset exception caught
+progress: 26% (1300/5000)
+progress: 27% (1350/5000)
+progress: 28% (1400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.8226, length=108, global_step=1405
+reset exception caught
+progress: 29% (1450/5000)
+progress: 30% (1500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7526, length=108, global_step=1513
+reset exception caught
+progress: 31% (1550/5000)
+progress: 32% (1600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2454, length=115, global_step=1628
+reset exception caught
+progress: 33% (1650/5000)
+progress: 34% (1700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.0691, length=116, global_step=1744
+reset exception caught
+progress: 35% (1750/5000)
+progress: 36% (1800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.1713, length=90, global_step=1834
+reset exception caught
+progress: 37% (1850/5000)
+progress: 38% (1900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4636, length=109, global_step=1943
+reset exception caught
+progress: 39% (1950/5000)
+progress: 40% (2000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8068, length=87, global_step=2030
+reset exception caught
+progress: 41% (2050/5000)
+progress: 42% (2100/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.4938, length=85, global_step=2115
+reset exception caught
+progress: 43% (2150/5000)
+progress: 44% (2200/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.7602, length=85, global_step=2200
+reset exception caught
+progress: 45% (2250/5000)
+progress: 46% (2300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6141, length=123, global_step=2323
+reset exception caught
+progress: 47% (2350/5000)
+progress: 48% (2400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7352, length=89, global_step=2412
+reset exception caught
+progress: 49% (2450/5000)
+progress: 50% (2500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.0190, length=90, global_step=2502
+reset exception caught
+progress: 51% (2550/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.1469, length=97, global_step=2599
+progress: 52% (2600/5000)
+reset exception caught
+progress: 53% (2650/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7743, length=97, global_step=2696
+reset exception caught
+progress: 54% (2700/5000)
+progress: 55% (2750/5000)
+progress: 56% (2800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2007, length=128, global_step=2824
+reset exception caught
+progress: 57% (2850/5000)
+progress: 58% (2900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6958, length=94, global_step=2918
+reset exception caught
+progress: 59% (2950/5000)
+progress: 60% (3000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.7117, length=94, global_step=3012
+reset exception caught
+progress: 61% (3050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7391, length=86, global_step=3098
+reset exception caught
+progress: 62% (3100/5000)
+progress: 63% (3150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.4810, length=85, global_step=3183
+reset exception caught
+progress: 64% (3200/5000)
+progress: 65% (3250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8783, length=90, global_step=3273
+reset exception caught
+progress: 66% (3300/5000)
+progress: 67% (3350/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4511, length=100, global_step=3373
+reset exception caught
+progress: 68% (3400/5000)
+progress: 69% (3450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.3979, length=88, global_step=3461
+reset exception caught
+progress: 70% (3500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.5415, length=88, global_step=3549
+progress: 71% (3550/5000)
+reset exception caught
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.5775, length=39, global_step=3588
+reset exception caught
+progress: 72% (3600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.1333, length=39, global_step=3627
+reset exception caught
+progress: 73% (3650/5000)
+progress: 74% (3700/5000)
+progress: 75% (3750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.8041, length=128, global_step=3755
+reset exception caught
+progress: 76% (3800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8672, length=89, global_step=3844
+reset exception caught
+progress: 77% (3850/5000)
+progress: 78% (3900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6927, length=89, global_step=3933
+reset exception caught
+progress: 79% (3950/5000)
+progress: 80% (4000/5000)
+progress: 81% (4050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8132, length=122, global_step=4055
+reset exception caught
+SPS: 38
+Run saved: model at /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/runs/ACL_MetaDrive__ppo__1__resample0.5__1773337093.pt
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.0162370204925537
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.47628486156463623
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.23251892626285553
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.1235005855560303
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.1892809867858887
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.8190546035766602
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.08308482170105
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.1778481006622314
+reset exception caught
+Saved buffer data to disk
+eval_return: 3.174619674682617
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.6932564973831177
+eval_after_train: ran 10 episodes (same envs as training, max_steps=1000, eval_step_cap=1000)
+Run saved: results appended to /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/policy/runs_results.xlsx
+Run saved.
+========== replay_resample_prob=0.75 ==========
+Training: total_timesteps=5000, batch_size=4096, num_iterations=1 -> actual steps = 4096, replay_resample_prob=0.75
+self loop doesnt exist, creating new one
+progress: 1% (50/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8374, length=89, global_step=89
+reset exception caught
+progress: 2% (100/5000)
+progress: 3% (150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.8445, length=90, global_step=179
+reset exception caught
+progress: 4% (200/5000)
+progress: 5% (250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0305, length=107, global_step=286
+reset exception caught
+progress: 6% (300/5000)
+progress: 7% (350/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6904, length=106, global_step=392
+reset exception caught
+progress: 8% (400/5000)
+progress: 9% (450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.2762, length=106, global_step=498
+reset exception caught
+progress: 10% (500/5000)
+progress: 11% (550/5000)
+progress: 12% (600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.9175, length=124, global_step=622
+reset exception caught
+progress: 13% (650/5000)
+progress: 14% (700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6078, length=123, global_step=745
+reset exception caught
+progress: 15% (750/5000)
+progress: 16% (800/5000)
+progress: 17% (850/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9590, length=123, global_step=868
+reset exception caught
+progress: 18% (900/5000)
+progress: 19% (950/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.2130, length=90, global_step=958
+reset exception caught
+progress: 20% (1000/5000)
+progress: 21% (1050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6274, length=106, global_step=1064
+reset exception caught
+progress: 22% (1100/5000)
+progress: 23% (1150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.8887, length=116, global_step=1180
+reset exception caught
+progress: 24% (1200/5000)
+progress: 25% (1250/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6732, length=116, global_step=1296
+reset exception caught
+progress: 26% (1300/5000)
+progress: 27% (1350/5000)
+progress: 28% (1400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7820, length=106, global_step=1402
+reset exception caught
+progress: 29% (1450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=1.5204, length=90, global_step=1492
+reset exception caught
+progress: 30% (1500/5000)
+progress: 31% (1550/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.1835, length=106, global_step=1598
+reset exception caught
+progress: 32% (1600/5000)
+progress: 33% (1650/5000)
+progress: 34% (1700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.5197, length=106, global_step=1704
+reset exception caught
+progress: 35% (1750/5000)
+progress: 36% (1800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.9347, length=106, global_step=1810
+reset exception caught
+progress: 37% (1850/5000)
+progress: 38% (1900/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7003, length=106, global_step=1916
+reset exception caught
+progress: 39% (1950/5000)
+progress: 40% (2000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9823, length=106, global_step=2022
+reset exception caught
+progress: 41% (2050/5000)
+progress: 42% (2100/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.6701, length=97, global_step=2119
+reset exception caught
+progress: 43% (2150/5000)
+progress: 44% (2200/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.2710, length=97, global_step=2216
+reset exception caught
+progress: 45% (2250/5000)
+progress: 46% (2300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6602, length=115, global_step=2331
+reset exception caught
+progress: 47% (2350/5000)
+progress: 48% (2400/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9383, length=115, global_step=2446
+reset exception caught
+progress: 49% (2450/5000)
+progress: 50% (2500/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.7557, length=97, global_step=2543
+reset exception caught
+progress: 51% (2550/5000)
+progress: 52% (2600/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.9358, length=106, global_step=2649
+progress: 53% (2650/5000)
+reset exception caught
+progress: 54% (2700/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0481, length=97, global_step=2746
+reset exception caught
+progress: 55% (2750/5000)
+progress: 56% (2800/5000)
+Saved buffer data to disk
+episode_end | ended (reason=crash, outcome=unknown) | reward=0.6970, length=90, global_step=2836
+reset exception caught
+progress: 57% (2850/5000)
+progress: 58% (2900/5000)
+progress: 59% (2950/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0840, length=116, global_step=2952
+reset exception caught
+progress: 60% (3000/5000)
+progress: 61% (3050/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.1240, length=124, global_step=3076
+reset exception caught
+progress: 62% (3100/5000)
+progress: 63% (3150/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.7302, length=117, global_step=3193
+reset exception caught
+progress: 64% (3200/5000)
+progress: 65% (3250/5000)
+progress: 66% (3300/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.4239, length=131, global_step=3324
+reset exception caught
+progress: 67% (3350/5000)
+progress: 68% (3400/5000)
+progress: 69% (3450/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=2.0211, length=131, global_step=3455
+reset exception caught
+progress: 70% (3500/5000)
+progress: 71% (3550/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=0.6723, length=107, global_step=3562
+reset exception caught
+progress: 72% (3600/5000)
+progress: 73% (3650/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.3680, length=116, global_step=3678
+reset exception caught
+progress: 74% (3700/5000)
+progress: 75% (3750/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.8132, length=108, global_step=3786
+reset exception caught
+progress: 76% (3800/5000)
+progress: 77% (3850/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.9421, length=108, global_step=3894
+reset exception caught
+progress: 78% (3900/5000)
+progress: 79% (3950/5000)
+progress: 80% (4000/5000)
+Saved buffer data to disk
+episode_end | ended (reason=terminated, outcome=unknown) | reward=1.0995, length=130, global_step=4024
+reset exception caught
+progress: 81% (4050/5000)
+SPS: 33
+Run saved: model at /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/runs/ACL_MetaDrive__ppo__1__resample0.75__1773337233.pt
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.1898653507232666
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.115781784057617
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.3163961172103882
+reset exception caught
+Saved buffer data to disk
+eval_return: 0.9352938532829285
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.3865208625793457
+reset exception caught
+Saved buffer data to disk
+eval_return: 2.1071066856384277
+reset exception caught
+Saved buffer data to disk
+eval_return: 3.0306177139282227
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.7363721132278442
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.7339071035385132
+reset exception caught
+Saved buffer data to disk
+eval_return: 1.2700375318527222
+eval_after_train: ran 10 episodes (same envs as training, max_steps=1000, eval_step_cap=1000)
+Run saved: results appended to /home/kvargas/acl_experiments/ACL-experiments/ethan_work/SIPACL/Work/policy/runs_results.xlsx
+Run saved.
+========== sweep finished ==========
