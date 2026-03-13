@@ -504,7 +504,9 @@ if __name__ == "__main__":
         metadrive_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         runs_dir = os.path.join(metadrive_dir, "runs")
         os.makedirs(runs_dir, exist_ok=True)
-        model_path = os.path.join(runs_dir, f"{run_name}.pt")
+        # Save model checkpoints with compact names: smpl<replay_resample_prob>.pt
+        model_basename = f"smpl{args.replay_resample_prob}"
+        model_path = os.path.join(runs_dir, f"{model_basename}.pt")
         torch.save(agent.state_dict(), model_path)
         model_path_abs = os.path.abspath(model_path)
         print(f"Run saved: model at {model_path_abs}")

@@ -214,7 +214,7 @@ def main():
         all_vals.extend(returns)
     ax3.set_xlabel("Episode")
     ax3.set_ylabel("Return")
-    ax3.set_title("Training return by episode (one line per run)")
+    ax3.set_title("Training return by episode")
     if all_vals:
         arr = np.array(all_vals)
         y3_min, y3_max = np.nanmin(arr), np.nanmax(arr)
