@@ -73,7 +73,7 @@ class Args:
     """underlying model for the scenic file"""
     map: str = "./CARLA/Town06.net.xml"
     """Sumo/OpenDRIVE map for the env (rl_mobil uses Town06)"""
-    sampler_type: str = "halton"
+    sampler_type: str = "random"
     """ sampling type for generating scenes"""
     save_model: bool = True
     """whether to save model to the `runs/{run_name}` folder"""
@@ -103,7 +103,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "ACL_MetaDrive"
     """the id of the environment"""
-    total_timesteps: int = 5000
+    total_timesteps: int = 500000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     args.num_iterations = max(1, args.total_timesteps // args.batch_size)
     actual_timesteps = args.num_iterations * args.batch_size
     print(f"Training: total_timesteps={args.total_timesteps}, batch_size={args.batch_size}, num_iterations={args.num_iterations} -> actual steps = {actual_timesteps}, replay_resample_prob={args.replay_resample_prob}")
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__resample{args.replay_resample_prob}__{int(time.time())}"
+    run_name = f"p{args.replay_resample_prob}s{args.sampler_type}{datetime.now().strftime('%H%M')}"
     results_excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs_results.xlsx")
     episode_returns_log, episode_lengths_log = [], []
     if args.track:
@@ -273,9 +273,13 @@ if __name__ == "__main__":
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+    print(f"Using device: {device}" + (f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else ""))
 
 
     # env setup
@@ -504,9 +508,8 @@ if __name__ == "__main__":
         metadrive_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         runs_dir = os.path.join(metadrive_dir, "runs")
         os.makedirs(runs_dir, exist_ok=True)
-        # Save model checkpoints with compact names: smpl<replay_resample_prob>.pt
-        model_basename = f"smpl{args.replay_resample_prob}"
-        model_path = os.path.join(runs_dir, f"{model_basename}.pt")
+        # Save model with same succinct name as run_name: p<prob>s<sampler><HHMM>.pt
+        model_path = os.path.join(runs_dir, f"{run_name}.pt")
         torch.save(agent.state_dict(), model_path)
         model_path_abs = os.path.abspath(model_path)
         print(f"Run saved: model at {model_path_abs}")

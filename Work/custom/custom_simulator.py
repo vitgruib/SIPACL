@@ -96,6 +96,12 @@ class CustomMetaDriveSimulator(DrivingSimulator):
             **kwargs,
         )
 
+    def destroy(self):
+        """Tear down the MetaDrive client so the engine singleton is freed (allows creating new envs)."""
+        if self.client and getattr(self.client, "close", None):
+            self.client.close()
+        super().destroy()
+
 
 class CustomMetaDriveSimulation(DrivingSimulation):
     def __init__(

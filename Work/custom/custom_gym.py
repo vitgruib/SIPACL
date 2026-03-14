@@ -8,6 +8,7 @@ import glob
 import io
 import os
 import random
+import sys
 import numpy as np
 
 # Default obs/action shapes for MetaDrive (ego + nav); PPO expects Box after FlattenObservation.
@@ -78,6 +79,7 @@ class MetaDriveEnv(gym.Env):
         self.is_continuation = resume_from_buffer and self.is_special_training
         self.buffer_p = max(0.0, min(1.0, replay_resample_prob)) if self.is_special_training else 0.0
 
+        # Clear buffer when starting a new run with replay enabled (not resuming from buffer_dir).
         if self.is_special_training and not self.is_continuation:
             for p in glob.glob(os.path.join(self._buffer_dir, "scene_*.bin")):
                 try:
@@ -109,6 +111,9 @@ class MetaDriveEnv(gym.Env):
         self.working_index = -1
         self.episode_mode = NEW
         self.counting_reward = 0
+        self._closed = False
+        # When True, next _pick_scene must resample (so a newly added scene gets replayed once).
+        self._force_resample_next = False
 
     def _load_scene(self, index: int):
         with io.open(f"{self._buffer_dir}/scene_{index}.bin", "rb") as f:
@@ -118,16 +123,22 @@ class MetaDriveEnv(gym.Env):
         with io.open(f"{self._buffer_dir}/scene_{index}.bin", "wb") as f:
             f.write(self.scenario.sceneToBytes(scene=scene))
 
+    # Huge LP so a newly added scene is chosen when we force-resample on the next reset.
+    _NEW_SCENE_LEARNING_POTENTIAL = 1e10
+
     def _pick_scene(self) -> Tuple:
         if not self.is_special_training:
             scene, _ = self.scenario.generate(feedback=self.feedback_result)
             return scene, -1, NEW
         n = len(self.buffer_filenames)
         lp_len, lr_len = len(self.buffer_learning_potential), len(self.buffer_last_reward)
-        if lp_len != lr_len:
-            idx = n - 1
-            return self._load_scene(idx), idx, DOUBLE
-        if random.uniform(0, 1) < self.buffer_p and n > 0:
+        # Guarantee we resample next after adding a new scene (replay it once); huge LP picks that scene.
+        if self._force_resample_next and n > 0 and n == lp_len == lr_len:
+            self._force_resample_next = False
+            probs = self.buffer_learning_potential / np.sum(self.buffer_learning_potential)
+            idx = int(np.random.choice(n, p=probs))
+            return self._load_scene(idx), idx, RESAMPLE
+        if not self._force_resample_next and random.uniform(0, 1) < self.buffer_p and n > 0 and n == lp_len == lr_len:
             probs = self.buffer_learning_potential / np.sum(self.buffer_learning_potential)
             idx = int(np.random.choice(n, p=probs))
             return self._load_scene(idx), idx, RESAMPLE
@@ -221,11 +232,17 @@ class MetaDriveEnv(gym.Env):
         pass
 
     def close(self):
+        if self._closed:
+            return
+        # Cannot safely do I/O during interpreter shutdown (__del__ with sys.meta_path is None).
+        if getattr(sys, "meta_path", None) is None:
+            return
         if self.episode_rewards:
             path = f"{self._buffer_dir}/episode_rewards.npy"
             with io.open(path, "wb") as f:
                 np.save(f, np.array(self.episode_rewards))
         self.simulator.destroy()
+        self._closed = True
         
     def logScores(self):
         if not self.is_special_training:
@@ -234,19 +251,20 @@ class MetaDriveEnv(gym.Env):
         if total == 0:
             print("TOTAL REWARD is 0! suspicious!")
         i = self.working_index
-        if self.episode_mode == DOUBLE:
-            lp = abs(total - self.buffer_last_reward[i]) + 1e-8
-            self.feedback_result = -lp
-            self.buffer_learning_potential = np.append(self.buffer_learning_potential, lp)
-            self.buffer_last_reward[i] = total
-        elif self.episode_mode == RESAMPLE:
+        if self.episode_mode == RESAMPLE:
             if i >= len(self.buffer_last_reward):
                 print(f"Warning: working index {i} out of bounds for buffer_last_reward len {len(self.buffer_last_reward)}")
             lp = abs(total - self.buffer_last_reward[i]) + 1e-8
             self.buffer_learning_potential[i] = lp
             self.buffer_last_reward[i] = total
         else:
+            # NEW: append reward and huge LP so next reset is forced to resample this scene (replay once).
             self.buffer_last_reward = np.append(self.buffer_last_reward, total)
+            self.buffer_learning_potential = np.append(
+                self.buffer_learning_potential,
+                self._NEW_SCENE_LEARNING_POTENTIAL,
+            )
+            self._force_resample_next = True
         base = self._buffer_dir
         for name, arr in [
             ("buffer_filenames.npy", self.buffer_filenames),
