@@ -82,14 +82,14 @@ def get_adjacent_lane(id, vehicle, direction):
 
 	return None
 
-def check_safety_criterion(current_car, new_follower, long_control):
+def check_safety_criterion(current_car, new_follower, long_control, safe_braking):
 	if new_follower is None:
 		return True
 	vehicles_for_control = [current_car, new_follower]
 	_, _, new_follower_a = long_control.compute_control(vehicles_for_control, mobil=True)
-	return new_follower_a >= SAFE_BRAKING
+	return new_follower_a >= safe_braking
 
-def check_incentive_criterion(current_car, new_follower, new_leader, long_control):
+def check_incentive_criterion(current_car, new_follower, new_leader, long_control, politeness, accel_threshold):
 	# Current car's current acceleration
 	accel_self_before = current_car.metaDriveActor.throttle_brake
 
@@ -108,15 +108,14 @@ def check_incentive_criterion(current_car, new_follower, new_leader, long_contro
 	my_gain = accel_self_after - accel_self_before
 	their_loss = accel_new_follower_before - accel_new_follower_after
 
-	if my_gain > (POLITENESS_FACTOR * their_loss) + ACCEL_THRESHOLD:
+	if my_gain > (politeness * their_loss) + accel_threshold:
 		return True
 	else:
 		return False
 
 # Victim behavior
-behavior ACC_MOBIL(id, dt, ego_speed, lane):
+behavior ACC_MOBIL(id, dt, ego_speed, lane, politeness, safe_braking, accel_threshold, intervehicle_distance):
 	thresholdDistance = 25.0
-	intervehicle_distance = 7
 	long_control = AccControl(id, dt, ego_speed, False, intervehicle_distance)
 	long_control_mobil = AccControl(id, dt, ego_speed, False, intervehicle_distance)
 	lat_control  = LateralControl(dt)
@@ -150,8 +149,8 @@ behavior ACC_MOBIL(id, dt, ego_speed, lane):
 				adjacent_leader = get_vehicle_ahead(id, self, adjacent_lane)
 				adjacent_follower = get_vehicle_behind(id, self, adjacent_lane)
 
-				is_safe = check_safety_criterion(self, adjacent_follower, long_control_mobil)
-				is_worth_it = check_incentive_criterion(self, adjacent_follower, adjacent_leader, long_control_mobil)
+				is_safe = check_safety_criterion(self, adjacent_follower, long_control_mobil, safe_braking)
+				is_worth_it = check_incentive_criterion(self, adjacent_follower, adjacent_leader, long_control_mobil, politeness, accel_threshold)
 
 				if is_safe and is_worth_it:
 					target_lane_for_change = adjacent_lane
@@ -185,6 +184,14 @@ amplitude_steer = VerifaiRange(0, 1)
 frequency 		= VerifaiRange(0, 10)
 attack_time 	= VerifaiRange(0, 10)
 duty_cycle      = VerifaiRange(0, 1)
+
+# Scene parameters (VerifAI external sampling; one joint sample per scenario generation)
+# Shared by all ACC_MOBIL victims; lane assignment remains Uniform(*lane_group.lanes).
+victim_politeness = VerifaiRange(0.05, 0.22)
+victim_safe_braking = VerifaiRange(-1.2, -0.65)
+victim_accel_threshold = VerifaiRange(0.05, 0.16)
+victim_intervehicle = VerifaiRange(5.5, 8.5)
+victim_desired_speed = VerifaiRange(12.0, 18.0)
 
 # Attack Behavior
 behavior Attacker(id, dt, ego_speed, lane):
@@ -256,6 +263,7 @@ behavior dummy_behavior():
 		take SetThrottleAction(0.0), SetBrakeAction(0.0), SetSteerAction(0.0)
 
 #PLACEMENT
+# Victim controller params: VerifaiRange scene parameters above; lateral layout: Uniform over lanes.
 ego_spawn_pt  = (200 @ -244.5)
 victim_spawn_pt = (120 @ -244.5)
 num_vehicles_to_place = 5
@@ -269,7 +277,8 @@ victim_vehicles = []
 for i in range(num_vehicles_to_place):
 	follower_id = i + 1
 	lane_i = Uniform(*lane_group.lanes)
-	c_i = new Car on lane_i, with behavior ACC_MOBIL(follower_id, globalParameters.time_step, 15, lane_i)
+	c_i = new Car on lane_i,
+		with behavior ACC_MOBIL(follower_id, globalParameters.time_step, victim_desired_speed, lane_i, victim_politeness, victim_safe_braking, victim_accel_threshold, victim_intervehicle)
 	victim_vehicles.append(c_i)
 
 def true_dist(car1, car2):

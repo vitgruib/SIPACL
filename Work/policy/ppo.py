@@ -40,6 +40,22 @@ except ImportError:
     load_workbook = Workbook = None  # optional: pip install openpyxl
 
 
+def _float_slug(x: float) -> str:
+    """Filesystem-safe token for a float (no '-' in names)."""
+    if x == int(x):
+        ix = int(x)
+        return f"n{abs(ix)}" if ix < 0 else str(abs(ix))
+    ax = abs(x)
+    body = str(ax).replace(".", "p")
+    return f"n{body}" if x < 0 else body
+
+
+def default_buffer_dir(work_dir: str, replay_resample_prob: float, sampler_type: str, plr_stale_coef: float) -> str:
+    """Unique PLR buffer folder per (replay, sampler, staleness) so parallel sweeps do not clash."""
+    sub = f"p{_float_slug(replay_resample_prob)}_s{sampler_type}_st{_float_slug(plr_stale_coef)}"
+    return os.path.normpath(os.path.join(work_dir, "buffer_runs", sub))
+
+
 @dataclass
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
@@ -81,7 +97,7 @@ class Args:
     """if True, skip training and only evaluate the model at model_to_evaluate_path"""
     eval_after_train: bool = True
     """if True, run evaluation for eval_episodes after training (same run)"""
-    eval_episodes: int = 10
+    eval_episodes: int = 100
     """number of episodes to run when evaluating (evaluate_model or eval_after_train)"""
     eval_max_steps: int = 1000
     """fixed max steps per eval episode so returns are comparable; -1 uses training max_steps"""
@@ -92,13 +108,17 @@ class Args:
     render3d: bool = False
     """override 3D rendering (default: true)"""
 
-    # Prioritized level replay (MetaDriveEnv)0
+    # Prioritized level replay (MetaDriveEnv)
     replay_resample_prob: float = .5
     """probability of resampling from buffer vs new scene; use -1 to disable replay"""
-    buffer_dir: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "buffer")
-    """directory for scene buffer (scene_*.bin and buffer_*.npy); default is Work/buffer"""
+    buffer_dir: Optional[str] = None
+    """scene buffer dir (scene_*.bin and buffer_*.npy); default is Work/buffer_runs/<p>_<sampler>_<stale>"""
     resume_from_buffer: bool = False
     """load buffer state from buffer_dir on init (continue a previous run)"""
+    buffer_max: int = 5000
+    """max buffered scenes; FIFO eviction when full"""
+    plr_stale_coef: float = 0.0
+    """if > 0, effective score = LP * (1 + coef * episode_staleness); 0 disables staleness weighting"""
 
     # Algorithm specific arguments
     env_id: str = "ACL_MetaDrive"
@@ -176,6 +196,8 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             replay_resample_prob=args.replay_resample_prob,
             buffer_dir=args.buffer_dir,
             resume_from_buffer=args.resume_from_buffer,
+            buffer_max=args.buffer_max,
+            plr_stale_coef=args.plr_stale_coef,
         )
 
         # Keep flattening because policy network expects a flat Box observation tensor.
@@ -247,11 +269,17 @@ if __name__ == "__main__":
         args.map = os.path.normpath(os.path.join(_work_dir, args.map))
     if args.model_to_evaluate_path and not os.path.isabs(args.model_to_evaluate_path):
         args.model_to_evaluate_path = os.path.normpath(os.path.join(_work_dir, args.model_to_evaluate_path))
+    if args.buffer_dir is None:
+        args.buffer_dir = default_buffer_dir(_work_dir, args.replay_resample_prob, args.sampler_type, args.plr_stale_coef)
+    elif not os.path.isabs(args.buffer_dir):
+        args.buffer_dir = os.path.normpath(os.path.join(_work_dir, args.buffer_dir))
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = max(1, args.total_timesteps // args.batch_size)
     actual_timesteps = args.num_iterations * args.batch_size
-    print(f"Training: total_timesteps={args.total_timesteps}, batch_size={args.batch_size}, num_iterations={args.num_iterations} -> actual steps = {actual_timesteps}, replay_resample_prob={args.replay_resample_prob}")
+    print(
+        f"Training: total_timesteps={args.total_timesteps}, batch_size={args.batch_size}, num_iterations={args.num_iterations} -> actual steps = {actual_timesteps}, replay_resample_prob={args.replay_resample_prob}, buffer_dir={args.buffer_dir}"
+    )
     run_name = f"p{args.replay_resample_prob}s{args.sampler_type}{datetime.now().strftime('%H%M')}"
     results_excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs_results.xlsx")
     episode_returns_log, episode_lengths_log = [], []
