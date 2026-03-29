@@ -11,17 +11,9 @@ cd SipACL
 pip install -r reqs.txt
 ```
 
-**Hyperparameter sweep** (from `Work/`). VerifAI / Scenic sampling is **`random` only** (`--sampler-type random`). Each combination gets a unique buffer under `Work/buffer_runs/` (see `policy/ppo.py` defaults).
+**Training** — from `Work/`, run `policy/ppo.py` with `tyro` CLI args (e.g. `--replay-resample-prob`, `--plr-stale-coef`, `--sampler-type random`). Checkpoints go under `Work/runs/`; PLR buffers default to `Work/buffer_runs/…` per hyperparameters (see `policy/ppo.py`).
 
-### Supercomputer / HPC (four bash scripts, sequential, no extra libraries)
+**Five-run baselines** (bash, from `Work/`):
 
-Submit **four** separate jobs if you like (one script per `replay_resample_prob` value). Together they cover the full grid (**12 runs** = 4 `p` × 3 `stale`). Staleness sweep: `plr_stale_coef` ∈ `{0, 0.01, 0.05}`.
-
-| Script | What it runs |
-|--------|----------------|
-| `run_resample_sweep_part1.sh` | `random`, `p` = -1 × all `stale` (3 runs) |
-| `run_resample_sweep_part2.sh` | `random`, `p` = 0.25 × all `stale` (3 runs) |
-| `run_resample_sweep_part3.sh` | `random`, `p` = 0.5 × all `stale` (3 runs) |
-| `run_resample_sweep_part4.sh` | `random`, `p` = 0.75 × all `stale` (3 runs) |
-
-`p` = `--replay-resample-prob`, `stale` = `--plr-stale-coef`. Example: `cd Work && bash run_resample_sweep_part1.sh`
+- `run_no_plr_5x.sh` — PLR off (`--replay-resample-prob -1`), seeds 1–5.
+- `run_plr_5x.sh` — PLR on with hardcoded `REPLAY_P=0.5` and `PLR_STALE_COEF=0.01`, seeds 1–5.

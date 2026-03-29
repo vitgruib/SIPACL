@@ -31,7 +31,6 @@ htmlcov/
 Work/runs/
 Work/buffer/
 Work/buffer_runs/
-Work/*run_resample*.txt
 Work/scenarios/controllers
 # Work/policy/runs_results.xlsx
 Work/policy/runs_visualization.png
