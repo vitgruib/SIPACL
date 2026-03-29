@@ -4,7 +4,8 @@ Visualize runs from runs_results.xlsx:
   1) Training results: bar chart with confidence intervals
   2) Testing (eval) results: bar chart with confidence intervals
   3) One line per run: episode (x) vs return (y)
-Usage: python visualize_runs.py [-n N] [--all] [-f path/to/runs_results.xlsx]
+All data rows are plotted in the same order as the Excel sheet. Column names come from the first row.
+Usage: python visualize_runs.py [-f path/to/runs_results.xlsx]
 """
 import argparse
 import ast
@@ -26,14 +27,19 @@ except ImportError:
     sys.exit(1)
 
 
-# Column indices from ppo.py header
-HEADER = [
-    "run_name", "time", "seed", "replay_resample_prob", "total_timesteps", "num_envs", "learning_rate", "gamma",
-    "exp_name", "eval_episodes", "eval_max_steps",
-    "mean_episodic_return", "std_episodic_return", "mean_episodic_length", "num_episodes", "SPS",
-    "episodic_returns",
-    "mean_eval_return", "std_eval_return", "num_eval_episodes", "eval_returns",
-]
+def _unique_headers(header_row):
+    """Build header names from first Excel row; preserve order; disambiguate duplicates."""
+    seen = {}
+    out = []
+    for j, cell in enumerate(header_row):
+        if cell is None or (isinstance(cell, str) and cell.strip() == ""):
+            base = f"_col{j}"
+        else:
+            base = str(cell).strip()
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        out.append(base if n == 0 else f"{base}_{n}")
+    return out
 
 
 def _num(x):
@@ -65,31 +71,19 @@ def load_runs(path):
     wb.close()
     if not rows:
         return []
+    headers = _unique_headers(rows[0])
     runs = []
     for row in rows[1:]:
         if not row or row[0] is None:
             continue
         d = {}
-        for i, h in enumerate(HEADER):
-            if i < len(row):
-                d[h] = row[i]
-            else:
-                d[h] = None
+        for j, h in enumerate(headers):
+            d[h] = row[j] if j < len(row) else None
+        for j in range(len(headers), len(row)):
+            if row[j] is not None:
+                d[f"_extra_col{j}"] = row[j]
         runs.append(d)
     return runs
-
-
-def select_runs(runs, n, use_all):
-    """Return runs to plot: all in row order, or top n by eval/train return."""
-    if use_all or n <= 0:
-        return runs
-    def key(r):
-        v = _num(r.get("mean_eval_return"))
-        if np.isnan(v):
-            v = _num(r.get("mean_episodic_return"))
-        return v if not np.isnan(v) else -np.inf
-    sorted_runs = sorted(runs, key=key, reverse=True)
-    return sorted_runs[:n]
 
 
 def short_label(run, i):
@@ -131,9 +125,7 @@ def _data_ylim(means, err_half_widths, padding_frac=0.15):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize runs from runs_results.xlsx")
-    parser.add_argument("-n", type=int, default=10, help="Number of runs to show (default: 10). Ignored if --all.")
-    parser.add_argument("--all", action="store_true", help="Plot all runs (no limit)")
+    parser = argparse.ArgumentParser(description="Visualize runs from runs_results.xlsx (all rows, sheet order).")
     parser.add_argument("-f", "--file", default=None, help="Path to runs_results.xlsx (default: policy/runs_results.xlsx)")
     args = parser.parse_args()
 
@@ -152,16 +144,15 @@ def main():
         print("No data rows in Excel.")
         sys.exit(0)
 
-    selected = select_runs(runs, args.n, args.all)
-    n = len(selected)
+    n = len(runs)
 
-    mean_train = np.array([_num(r.get("mean_episodic_return")) for r in selected])
-    std_train = np.array([_num(r.get("std_episodic_return")) for r in selected])
-    num_episodes = np.array([_num(r.get("num_episodes")) for r in selected])
-    mean_eval = np.array([_num(r.get("mean_eval_return")) for r in selected])
-    std_eval = np.array([_num(r.get("std_eval_return")) for r in selected])
-    num_eval = np.array([_num(r.get("num_eval_episodes")) for r in selected])
-    labels = [short_label(r, i) for i, r in enumerate(selected)]
+    mean_train = np.array([_num(r.get("mean_episodic_return")) for r in runs])
+    std_train = np.array([_num(r.get("std_episodic_return")) for r in runs])
+    num_episodes = np.array([_num(r.get("num_episodes")) for r in runs])
+    mean_eval = np.array([_num(r.get("mean_eval_return")) for r in runs])
+    std_eval = np.array([_num(r.get("std_eval_return")) for r in runs])
+    num_eval = np.array([_num(r.get("num_eval_episodes")) for r in runs])
+    labels = [short_label(r, i) for i, r in enumerate(runs)]
 
     # 95% CI for the mean: half-width = 1.96 * (std / sqrt(n)). Uses raw std if n missing.
     err_train = _ci_half_width(std_train, num_episodes)
@@ -180,7 +171,7 @@ def main():
     if np.any(mask):
         ax1.bar(x[mask], mean_train[mask], width, yerr=err_train[mask], capsize=3, color="C0", alpha=0.8, error_kw={"linewidth": 1})
     ax1.set_ylabel("Return")
-    ax1.set_title("Training results (mean ± 95% CI)")
+    ax1.set_title("Training results (mean ± 95% CI), Excel row order")
     y1_min, y1_max = _data_ylim(mean_train, err_train)
     ax1.set_ylim(y1_min, y1_max)
     if y1_min <= 0 <= y1_max:
@@ -194,7 +185,7 @@ def main():
     if np.any(mask):
         ax2.bar(x[mask], mean_eval[mask], width, yerr=err_eval[mask], capsize=3, color="C1", alpha=0.8, error_kw={"linewidth": 1})
     ax2.set_ylabel("Return")
-    ax2.set_title("Testing (eval) results (mean ± 95% CI)")
+    ax2.set_title("Testing (eval) results (mean ± 95% CI), Excel row order")
     y2_min, y2_max = _data_ylim(mean_eval, err_eval)
     ax2.set_ylim(y2_min, y2_max)
     if y2_min <= 0 <= y2_max:
@@ -205,7 +196,7 @@ def main():
     # 3) One line per run: x = episode index, y = return
     ax3 = axes[2]
     all_vals = []
-    for i, r in enumerate(selected):
+    for i, r in enumerate(runs):
         returns = _parse_episodic_returns(r.get("episodic_returns"))
         if not returns:
             continue

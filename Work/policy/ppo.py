@@ -280,7 +280,11 @@ if __name__ == "__main__":
     print(
         f"Training: total_timesteps={args.total_timesteps}, batch_size={args.batch_size}, num_iterations={args.num_iterations} -> actual steps = {actual_timesteps}, replay_resample_prob={args.replay_resample_prob}, buffer_dir={args.buffer_dir}"
     )
-    run_name = f"p{args.replay_resample_prob}s{args.sampler_type}{datetime.now().strftime('%H%M')}"
+    run_name = (
+        f"p{args.replay_resample_prob}s{args.sampler_type}"
+        f"st{_float_slug(args.plr_stale_coef)}"
+        f"{datetime.now().strftime('%H%M')}"
+    )
     results_excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs_results.xlsx")
     episode_returns_log, episode_lengths_log = [], []
     if args.track:
@@ -536,7 +540,7 @@ if __name__ == "__main__":
         metadrive_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         runs_dir = os.path.join(metadrive_dir, "runs")
         os.makedirs(runs_dir, exist_ok=True)
-        # Save model with same succinct name as run_name: p<prob>s<sampler><HHMM>.pt
+        # Save model with same name as run_name: p<prob>s<sampler>st<stale><HHMM>.pt
         model_path = os.path.join(runs_dir, f"{run_name}.pt")
         torch.save(agent.state_dict(), model_path)
         model_path_abs = os.path.abspath(model_path)
