@@ -31,6 +31,7 @@ htmlcov/
 Work/runs/
 Work/buffer/
 Work/buffer_runs/
+Work/logs/
 Work/scenarios/controllers
 # Work/policy/runs_results.xlsx
 Work/policy/runs_visualization.png
@@ -51,6 +52,9 @@ vacuum/controllers/notes.txt
 *.swp
 *.swo
 *~
+
+# AI-only reference (local; not for human README)
+AI_CONTEXT.md
 
 # Cursor
 .cursor/

@@ -50,9 +50,18 @@ def _float_slug(x: float) -> str:
     return f"n{body}" if x < 0 else body
 
 
-def default_buffer_dir(work_dir: str, replay_resample_prob: float, sampler_type: str, plr_stale_coef: float) -> str:
-    """Unique PLR buffer folder per (replay, sampler, staleness) so parallel sweeps do not clash."""
-    sub = f"p{_float_slug(replay_resample_prob)}_s{sampler_type}_st{_float_slug(plr_stale_coef)}"
+def default_buffer_dir(
+    work_dir: str,
+    replay_resample_prob: float,
+    sampler_type: str,
+    plr_stale_coef: float,
+    seed: int,
+) -> str:
+    """Default PLR buffer folder: hyperparams + seed + pid so parallel jobs never share scene_*.bin."""
+    sub = (
+        f"p{_float_slug(replay_resample_prob)}_s{sampler_type}_st{_float_slug(plr_stale_coef)}"
+        f"_seed{int(seed)}_pid{os.getpid()}"
+    )
     return os.path.normpath(os.path.join(work_dir, "buffer_runs", sub))
 
 
@@ -112,7 +121,7 @@ class Args:
     replay_resample_prob: float = .5
     """probability of resampling from buffer vs new scene; use -1 to disable replay"""
     buffer_dir: Optional[str] = None
-    """scene buffer dir (scene_*.bin and buffer_*.npy); default is Work/buffer_runs/<p>_<sampler>_<stale>"""
+    """scene buffer dir (scene_*.bin and buffer_*.npy); default under Work/buffer_runs/ (see default_buffer_dir, _float_slug)"""
     resume_from_buffer: bool = False
     """load buffer state from buffer_dir on init (continue a previous run)"""
     buffer_max: int = 5000
@@ -270,7 +279,9 @@ if __name__ == "__main__":
     if args.model_to_evaluate_path and not os.path.isabs(args.model_to_evaluate_path):
         args.model_to_evaluate_path = os.path.normpath(os.path.join(_work_dir, args.model_to_evaluate_path))
     if args.buffer_dir is None:
-        args.buffer_dir = default_buffer_dir(_work_dir, args.replay_resample_prob, args.sampler_type, args.plr_stale_coef)
+        args.buffer_dir = default_buffer_dir(
+            _work_dir, args.replay_resample_prob, args.sampler_type, args.plr_stale_coef, args.seed
+        )
     elif not os.path.isabs(args.buffer_dir):
         args.buffer_dir = os.path.normpath(os.path.join(_work_dir, args.buffer_dir))
     args.batch_size = int(args.num_envs * args.num_steps)

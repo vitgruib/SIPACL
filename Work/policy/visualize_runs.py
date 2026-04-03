@@ -5,7 +5,7 @@ Visualize runs from runs_results.xlsx:
   2) Testing (eval) results: bar chart with confidence intervals
   3) One line per run: episode (x) vs return (y)
 All data rows are plotted in the same order as the Excel sheet. Column names come from the first row.
-Usage: python visualize_runs.py [-f path/to/runs_results.xlsx]
+Usage (from Work/): python policy/visualize_runs.py [-f policy/runs_results.xlsx]
 """
 import argparse
 import ast
@@ -126,7 +126,7 @@ def _data_ylim(means, err_half_widths, padding_frac=0.15):
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize runs from runs_results.xlsx (all rows, sheet order).")
-    parser.add_argument("-f", "--file", default=None, help="Path to runs_results.xlsx (default: policy/runs_results.xlsx)")
+    parser.add_argument("-f", "--file", default=None, help="Path to runs_results.xlsx (default: Work/policy/runs_results.xlsx)")
     args = parser.parse_args()
 
     if args.file:
