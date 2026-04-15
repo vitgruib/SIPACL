@@ -46,15 +46,16 @@ class MetaDriveEnv(gym.Env):
         feedback_fn: Callable = lambda x: x,
         buffer_dir: Optional[str] = None,
         replay_resample_prob: float = 0.5,
-        resume_from_buffer: bool = False,
         buffer_max: int = DEFAULT_BUFFER_MAX,
+        lp_strategy: str = "l1",
     ):
         """
         buffer_dir: Directory for scene buffer files (scene_*.bin and *_.npy).
         replay_resample_prob: Probability of resampling from buffer vs new scene.
             Use -1 to disable replay (always generate new scenes). In [0, 1] to enable.
-        resume_from_buffer: If True and replay is enabled, load buffer state from buffer_dir on init.
         buffer_max: Maximum buffered scenes; oldest removed (FIFO) when exceeded.
+        lp_strategy: Which learning-progress formula to use for PLR scoring.
+            Currently supported: "l1" (|Δ mean reward|). Add new variants in _lp_delta().
         LP EMA beta and rank alpha are fixed (DEFAULT_LP_EMA_BETA, DEFAULT_LP_RANK_ALPHA), not CLI args.
         """
         if observation_space is None:
@@ -87,14 +88,13 @@ class MetaDriveEnv(gym.Env):
         self._buffer_dir = buffer_dir or "buffer"
         os.makedirs(self._buffer_dir, exist_ok=True)
         self.is_special_training = replay_resample_prob >= 0
-        self.is_continuation = resume_from_buffer and self.is_special_training
         self.buffer_p = max(0.0, min(1.0, replay_resample_prob)) if self.is_special_training else 0.0
+        self.lp_strategy = lp_strategy
         self.lp_ema_beta = max(1e-6, min(1.0, float(DEFAULT_LP_EMA_BETA)))
         self.buffer_max = max(1, int(buffer_max))
         self.lp_rank_alpha = max(1e-6, min(10.0, float(DEFAULT_LP_RANK_ALPHA)))
 
-        # Clear buffer when starting a new run with replay enabled (not resuming from buffer_dir).
-        if self.is_special_training and not self.is_continuation:
+        if self.is_special_training:
             for p in glob.glob(os.path.join(self._buffer_dir, "scene_*.bin")):
                 try:
                     os.remove(p)
@@ -117,47 +117,14 @@ class MetaDriveEnv(gym.Env):
                     except OSError:
                         pass
 
-        def _load(path: str, default: np.ndarray) -> np.ndarray:
-            try:
-                return np.load(path)
-            except FileNotFoundError:
-                return default
-
         base = self._buffer_dir
         empty = np.array([])
-        self.buffer_filenames = _load(f"{base}/buffer_filenames.npy", empty) if self.is_continuation else empty
-        self.buffer_learning_potential = _load(f"{base}/buffer_learning_potential.npy", empty) if self.is_continuation else empty
-        # Per-slot: last episode mean return (sum of rewards / steps); used for |Δ| before EMA.
-        self.buffer_last_reward = _load(f"{base}/buffer_last_reward.npy", empty) if self.is_continuation else empty
-        self.buffer_lp_ema = _load(f"{base}/buffer_lp_ema.npy", empty) if self.is_continuation else empty
-        if self.is_continuation:
-            try:
-                self._plr_episode_seq = int(np.load(f"{base}/plr_episode_seq.npy"))
-            except FileNotFoundError:
-                self._plr_episode_seq = 0
-        else:
-            self._plr_episode_seq = 0
+        self.buffer_filenames = empty
+        self.buffer_learning_potential = empty
+        self.buffer_last_reward = empty
+        self.buffer_lp_ema = empty
+        self._plr_episode_seq = 0
         self.episode_lp_log: list[float] = []
-        if self.is_special_training and self.is_continuation:
-            _elp = os.path.join(self._buffer_dir, "episode_lp_values.npy")
-            try:
-                if os.path.isfile(_elp):
-                    self.episode_lp_log = np.load(_elp).astype(np.float64).tolist()
-            except OSError:
-                self.episode_lp_log = []
-        if self.is_continuation and len(self.buffer_filenames) > 0 and len(self.buffer_lp_ema) != len(self.buffer_filenames):
-            # Older runs without buffer_lp_ema.npy: bootstrap from learning potential.
-            self.buffer_lp_ema = (
-                self.buffer_learning_potential.copy()
-                if len(self.buffer_learning_potential) == len(self.buffer_filenames)
-                else np.ones(len(self.buffer_filenames)) * 1e10
-            )
-        if self.is_continuation:
-            print(
-                f"loaded files: {self.buffer_filenames}, learning potential: {self.buffer_learning_potential}, "
-                f"last mean reward/step: {self.buffer_last_reward}, lp_ema: {self.buffer_lp_ema}, "
-                f"plr_episode_seq={self._plr_episode_seq}"
-            )
 
         self.working_index = -1
         self.episode_mode = NEW
@@ -339,31 +306,56 @@ class MetaDriveEnv(gym.Env):
         self.simulator.destroy()
         self._closed = True
         
+    def _lp_delta(self, mean_r: float, prev_mean_r: float) -> float:
+        """Raw LP score before EMA smoothing.  Dispatches on self.lp_strategy.
+
+        Add new strategies here as elif branches.
+        """
+        if self.lp_strategy == "l1":
+            return abs(mean_r - prev_mean_r)
+        raise ValueError(f"Unknown lp_strategy: {self.lp_strategy!r}")
+
+    def _compute_learning_progress(
+        self,
+        mean_r: float,
+        prev_mean_r: float,
+        old_ema: float,
+    ) -> float:
+        """EMA-smooth the raw LP score from _lp_delta.
+
+        Args:
+            mean_r: Mean reward per step for the episode just finished.
+            prev_mean_r: Mean reward per step from the previous visit to this scene.
+            old_ema: EMA-smoothed LP from previous visits.
+
+        Returns:
+            Updated LP value for this buffer slot.
+        """
+        raw = self._lp_delta(mean_r, prev_mean_r)
+        if old_ema >= 0.5 * self._NEW_SCENE_LEARNING_POTENTIAL:
+            return float(raw)
+        beta = self.lp_ema_beta
+        return beta * raw + (1.0 - beta) * old_ema
+
     def logScores(self):
         if not self.is_special_training:
             return
         total = self.counting_reward
         mean_r = total / float(self._episode_steps)
         i = self.working_index
-        beta = self.lp_ema_beta
         if self.episode_mode == RESAMPLE:
             if i < 0 or i >= len(self.buffer_last_reward):
                 print(
                     f"Warning: working index {i} out of bounds for buffer_last_reward len {len(self.buffer_last_reward)}"
                 )
                 return
-            delta = abs(mean_r - self.buffer_last_reward[i])
-            old_ema = float(self.buffer_lp_ema[i])
-            # Sentinel (1e10) or a partially blended value still >> real LP: snap to delta, no EMA mix.
-            if old_ema >= 0.5 * self._NEW_SCENE_LEARNING_POTENTIAL:
-                lp_new = float(delta)
-            else:
-                lp_new = beta * delta + (1.0 - beta) * old_ema
+            lp_new = self._compute_learning_progress(
+                mean_r, self.buffer_last_reward[i], self.buffer_lp_ema[i]
+            )
             self.buffer_learning_potential[i] = lp_new
             self.buffer_lp_ema[i] = lp_new
             self.buffer_last_reward[i] = mean_r
         else:
-            # NEW: store mean return/step; huge LP for sampling; next reset forced to replay once.
             self.buffer_last_reward = np.append(self.buffer_last_reward, mean_r)
             self.buffer_learning_potential = np.append(
                 self.buffer_learning_potential,

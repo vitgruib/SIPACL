@@ -121,10 +121,10 @@ class Args:
     """probability of resampling from buffer vs new scene; use -1 to disable replay"""
     buffer_dir: Optional[str] = None
     """scene buffer dir (scene_*.bin and buffer_*.npy); default under Work/buffer_runs/ (see default_buffer_dir, _float_slug)"""
-    resume_from_buffer: bool = False
-    """load buffer state from buffer_dir on init (continue a previous run)"""
     buffer_max: int = 5000
     """max buffered scenes; FIFO eviction when full"""
+    lp_strategy: str = "l1"
+    """learning-progress formula for PLR scoring; see MetaDriveEnv._lp_delta() for supported values"""
 
     # Algorithm specific arguments
     env_id: str = "ACL_MetaDrive"
@@ -201,8 +201,8 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             max_steps=steps,
             replay_resample_prob=args.replay_resample_prob,
             buffer_dir=args.buffer_dir,
-            resume_from_buffer=args.resume_from_buffer,
             buffer_max=args.buffer_max,
+            lp_strategy=args.lp_strategy,
         )
 
         # Keep flattening because policy network expects a flat Box observation tensor.
