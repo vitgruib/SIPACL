@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Callable, Optional, Tuple
 
+import csv
 import glob
 import io
 import os
@@ -47,7 +48,6 @@ class MetaDriveEnv(gym.Env):
         replay_resample_prob: float = 0.5,
         resume_from_buffer: bool = False,
         buffer_max: int = DEFAULT_BUFFER_MAX,
-        plr_stale_coef: float = 0.0,
     ):
         """
         buffer_dir: Directory for scene buffer files (scene_*.bin and *_.npy).
@@ -55,8 +55,6 @@ class MetaDriveEnv(gym.Env):
             Use -1 to disable replay (always generate new scenes). In [0, 1] to enable.
         resume_from_buffer: If True and replay is enabled, load buffer state from buffer_dir on init.
         buffer_max: Maximum buffered scenes; oldest removed (FIFO) when exceeded.
-        plr_stale_coef: If > 0, rank uses effective score = LP * (1 + coef * staleness_episodes).
-            If 0, behavior matches LP-only replay (staleness arrays still maintained for resume).
         LP EMA beta and rank alpha are fixed (DEFAULT_LP_EMA_BETA, DEFAULT_LP_RANK_ALPHA), not CLI args.
         """
         if observation_space is None:
@@ -94,7 +92,6 @@ class MetaDriveEnv(gym.Env):
         self.lp_ema_beta = max(1e-6, min(1.0, float(DEFAULT_LP_EMA_BETA)))
         self.buffer_max = max(1, int(buffer_max))
         self.lp_rank_alpha = max(1e-6, min(10.0, float(DEFAULT_LP_RANK_ALPHA)))
-        self.plr_stale_coef = max(0.0, float(plr_stale_coef))
 
         # Clear buffer when starting a new run with replay enabled (not resuming from buffer_dir).
         if self.is_special_training and not self.is_continuation:
@@ -108,9 +105,10 @@ class MetaDriveEnv(gym.Env):
                 "buffer_learning_potential.npy",
                 "buffer_last_reward.npy",
                 "buffer_lp_ema.npy",
-                "buffer_last_seen_episode.npy",
                 "plr_episode_seq.npy",
                 "episode_rewards.npy",
+                "episode_lp_values.npy",
+                "lp_episode_log.csv",
             ):
                 p = os.path.join(self._buffer_dir, name)
                 if os.path.isfile(p):
@@ -127,26 +125,26 @@ class MetaDriveEnv(gym.Env):
 
         base = self._buffer_dir
         empty = np.array([])
-        empty_i64 = np.array([], dtype=np.int64)
         self.buffer_filenames = _load(f"{base}/buffer_filenames.npy", empty) if self.is_continuation else empty
         self.buffer_learning_potential = _load(f"{base}/buffer_learning_potential.npy", empty) if self.is_continuation else empty
         # Per-slot: last episode mean return (sum of rewards / steps); used for |Δ| before EMA.
         self.buffer_last_reward = _load(f"{base}/buffer_last_reward.npy", empty) if self.is_continuation else empty
         self.buffer_lp_ema = _load(f"{base}/buffer_lp_ema.npy", empty) if self.is_continuation else empty
-        self.buffer_last_seen_episode = (
-            _load(f"{base}/buffer_last_seen_episode.npy", empty_i64).astype(np.int64)
-            if self.is_continuation
-            else empty_i64
-        )
         if self.is_continuation:
             try:
                 self._plr_episode_seq = int(np.load(f"{base}/plr_episode_seq.npy"))
             except FileNotFoundError:
-                self._plr_episode_seq = (
-                    int(np.max(self.buffer_last_seen_episode)) if len(self.buffer_last_seen_episode) else 0
-                )
+                self._plr_episode_seq = 0
         else:
             self._plr_episode_seq = 0
+        self.episode_lp_log: list[float] = []
+        if self.is_special_training and self.is_continuation:
+            _elp = os.path.join(self._buffer_dir, "episode_lp_values.npy")
+            try:
+                if os.path.isfile(_elp):
+                    self.episode_lp_log = np.load(_elp).astype(np.float64).tolist()
+            except OSError:
+                self.episode_lp_log = []
         if self.is_continuation and len(self.buffer_filenames) > 0 and len(self.buffer_lp_ema) != len(self.buffer_filenames):
             # Older runs without buffer_lp_ema.npy: bootstrap from learning potential.
             self.buffer_lp_ema = (
@@ -154,15 +152,11 @@ class MetaDriveEnv(gym.Env):
                 if len(self.buffer_learning_potential) == len(self.buffer_filenames)
                 else np.ones(len(self.buffer_filenames)) * 1e10
             )
-        if self.is_continuation and len(self.buffer_filenames) > 0 and len(self.buffer_last_seen_episode) != len(
-            self.buffer_filenames
-        ):
-            self.buffer_last_seen_episode = np.zeros(len(self.buffer_filenames), dtype=np.int64)
         if self.is_continuation:
             print(
                 f"loaded files: {self.buffer_filenames}, learning potential: {self.buffer_learning_potential}, "
                 f"last mean reward/step: {self.buffer_last_reward}, lp_ema: {self.buffer_lp_ema}, "
-                f"plr_episode_seq={self._plr_episode_seq}, last_seen_ep={self.buffer_last_seen_episode}"
+                f"plr_episode_seq={self._plr_episode_seq}"
             )
 
         self.working_index = -1
@@ -195,28 +189,14 @@ class MetaDriveEnv(gym.Env):
             self.buffer_learning_potential = np.delete(self.buffer_learning_potential, 0)
             self.buffer_last_reward = np.delete(self.buffer_last_reward, 0)
             self.buffer_lp_ema = np.delete(self.buffer_lp_ema, 0)
-            if len(self.buffer_last_seen_episode) > 0:
-                self.buffer_last_seen_episode = np.delete(self.buffer_last_seen_episode, 0)
 
     # Huge LP so a newly added scene is chosen when we force-resample on the next reset.
     _NEW_SCENE_LEARNING_POTENTIAL = 1e10
 
-    def _plr_effective_scores(self) -> np.ndarray:
-        """LP only, or LP weighted by episode staleness when plr_stale_coef > 0."""
-        lp = np.asarray(self.buffer_learning_potential, dtype=np.float64)
-        if self.plr_stale_coef <= 0 or len(lp) == 0:
-            return lp
-        n = len(lp)
-        if len(self.buffer_last_seen_episode) != n:
-            return lp
-        stale = self._plr_episode_seq - self.buffer_last_seen_episode.astype(np.float64)
-        stale = np.maximum(stale, 0.0)
-        return lp * (1.0 + self.plr_stale_coef * stale)
-
     def _replay_probs_from_lp(self, lp: np.ndarray) -> np.ndarray:
         """Rank-based sampling (PER-style): P(i) ∝ 1/rank_i**alpha, rank 1 = highest score.
 
-        `lp` is typically _plr_effective_scores() (LP × staleness when enabled).
+        `lp` is typically ``buffer_learning_potential`` (learning progress per slot).
         New scenes use huge LP so they stay rank 1 until updated.
         Ties break by buffer index (stable sort: lower index first among equal LP).
         """
@@ -241,16 +221,16 @@ class MetaDriveEnv(gym.Env):
         lp_len, lr_len = len(self.buffer_learning_potential), len(self.buffer_last_reward)
         # Guarantee we resample next after adding a new scene (replay it once); huge LP picks that scene.
         lp_ema_len = len(self.buffer_lp_ema)
-        seen_len = len(self.buffer_last_seen_episode)
-        buf_ok = n > 0 and n == lp_len == lr_len == lp_ema_len == seen_len
+        buf_ok = n > 0 and n == lp_len == lr_len == lp_ema_len
+        lp_scores = np.asarray(self.buffer_learning_potential, dtype=np.float64)
         if self._force_resample_next and buf_ok:
             self._force_resample_next = False
-            probs = self._replay_probs_from_lp(self._plr_effective_scores())
+            probs = self._replay_probs_from_lp(lp_scores)
             pos = int(np.random.choice(n, p=probs))
             file_id = int(self.buffer_filenames[pos])
             return self._load_scene(file_id), pos, RESAMPLE
         if not self._force_resample_next and random.uniform(0, 1) < self.buffer_p and n > 0 and buf_ok:
-            probs = self._replay_probs_from_lp(self._plr_effective_scores())
+            probs = self._replay_probs_from_lp(lp_scores)
             pos = int(np.random.choice(n, p=probs))
             file_id = int(self.buffer_filenames[pos])
             return self._load_scene(file_id), pos, RESAMPLE
@@ -393,11 +373,46 @@ class MetaDriveEnv(gym.Env):
             self._force_resample_next = True
 
         self._plr_episode_seq += 1
-        ep_id = np.int64(self._plr_episode_seq)
-        if self.episode_mode == RESAMPLE:
-            self.buffer_last_seen_episode[i] = ep_id
-        else:
-            self.buffer_last_seen_episode = np.append(self.buffer_last_seen_episode, ep_id)
+
+        # Episodic LP log (optional detail); visualize_learning_progress reads lp_per_episode from runs_results.csv.
+        lp_log_path = os.path.join(self._buffer_dir, "lp_episode_log.csv")
+        write_lp_row = False
+        slot, fid, lp_val, mode_s = -1, -1, 0.0, ""
+        if self.episode_mode == RESAMPLE and 0 <= i < len(self.buffer_filenames):
+            slot = i
+            fid = int(self.buffer_filenames[slot])
+            lp_val = float(self.buffer_learning_potential[slot])
+            mode_s = "RESAMPLE"
+            write_lp_row = True
+        elif self.episode_mode == NEW and len(self.buffer_filenames) > 0:
+            slot = len(self.buffer_filenames) - 1
+            fid = int(self.buffer_filenames[slot])
+            lp_val = float(self.buffer_learning_potential[slot])
+            mode_s = "NEW"
+            write_lp_row = True
+        if write_lp_row:
+            self.episode_lp_log.append(float(lp_val))
+        try:
+            if write_lp_row:
+                new_file = not os.path.isfile(lp_log_path)
+                with io.open(lp_log_path, "a", encoding="utf-8", newline="") as lf:
+                    w = csv.writer(lf)
+                    if new_file:
+                        w.writerow(
+                            [
+                                "plr_episode_seq",
+                                "mode",
+                                "slot",
+                                "file_id",
+                                "lp_value",
+                                "mean_r_per_step",
+                            ]
+                        )
+                    w.writerow(
+                        [int(self._plr_episode_seq), mode_s, slot, fid, lp_val, float(mean_r)]
+                    )
+        except OSError:
+            pass
 
         base = self._buffer_dir
         for name, arr in [
@@ -405,8 +420,8 @@ class MetaDriveEnv(gym.Env):
             ("buffer_learning_potential.npy", self.buffer_learning_potential),
             ("buffer_last_reward.npy", self.buffer_last_reward),
             ("buffer_lp_ema.npy", self.buffer_lp_ema),
-            ("buffer_last_seen_episode.npy", self.buffer_last_seen_episode),
             ("plr_episode_seq.npy", np.array([self._plr_episode_seq], dtype=np.int64)),
+            ("episode_lp_values.npy", np.asarray(self.episode_lp_log, dtype=np.float64)),
         ]:
             with io.open(f"{base}/{name}", "wb") as f:
                 np.save(f, arr)

@@ -5,14 +5,17 @@ import sys
 
 # Ensure Work is on path so "custom" and relative paths resolve when run from repo root or Work
 _work_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_policy_dir = os.path.dirname(os.path.abspath(__file__))
 if _work_dir not in sys.path:
     sys.path.insert(0, _work_dir)
+if _policy_dir not in sys.path:
+    sys.path.insert(0, _policy_dir)
 import time
 import traceback
 from datetime import datetime
 import scenic
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional, Tuple
 from custom.custom_simulator import CustomMetaDriveSimulation, CustomMetaDriveSimulator 
 
 
@@ -34,10 +37,7 @@ class _NoOpWriter:
     def close(self): pass
 
 
-try:
-    from openpyxl import load_workbook, Workbook
-except ImportError:
-    load_workbook = Workbook = None  # optional: pip install openpyxl
+from run_results_io import append_run_row_csv
 
 
 def _float_slug(x: float) -> str:
@@ -54,12 +54,11 @@ def default_buffer_dir(
     work_dir: str,
     replay_resample_prob: float,
     sampler_type: str,
-    plr_stale_coef: float,
     seed: int,
 ) -> str:
     """Default PLR buffer folder: hyperparams + seed + pid so parallel jobs never share scene_*.bin."""
     sub = (
-        f"p{_float_slug(replay_resample_prob)}_s{sampler_type}_st{_float_slug(plr_stale_coef)}"
+        f"p{_float_slug(replay_resample_prob)}_s{sampler_type}"
         f"_seed{int(seed)}_pid{os.getpid()}"
     )
     return os.path.normpath(os.path.join(work_dir, "buffer_runs", sub))
@@ -112,7 +111,7 @@ class Args:
     """fixed max steps per eval episode so returns are comparable; -1 uses training max_steps"""
     model_to_evaluate_path: str = "runs/ACL_MetaDrive__ppo__1__resample-1__1772936486.pt"
     """Path for model to evaluate when evaluate_model is True"""
-    render: Optional[bool] = None
+    render: Optional[bool] = False
     """override rendering (default: true for eval, false otherwise)"""
     render3d: bool = False
     """override 3D rendering (default: true)"""
@@ -126,13 +125,11 @@ class Args:
     """load buffer state from buffer_dir on init (continue a previous run)"""
     buffer_max: int = 5000
     """max buffered scenes; FIFO eviction when full"""
-    plr_stale_coef: float = 0.0
-    """if > 0, effective score = LP * (1 + coef * episode_staleness); 0 disables staleness weighting"""
 
     # Algorithm specific arguments
     env_id: str = "ACL_MetaDrive"
     """the id of the environment"""
-    total_timesteps: int = 500000
+    total_timesteps: int = 100000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -206,7 +203,6 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             buffer_dir=args.buffer_dir,
             resume_from_buffer=args.resume_from_buffer,
             buffer_max=args.buffer_max,
-            plr_stale_coef=args.plr_stale_coef,
         )
 
         # Keep flattening because policy network expects a flat Box observation tensor.
@@ -269,6 +265,93 @@ class Agent(nn.Module):
         return action, log_prob, probs.entropy().sum(1), self.critic(x)
 
 
+def _episode_lp_log_init_from_envs(envs, num_envs: int) -> Tuple[List[float], List[int]]:
+    """Seed LP list from env 0 (shared buffer_dir on resume); per-env tail offsets for syncing."""
+    last_plr_lp_len = [0] * num_envs
+    for i in range(num_envs):
+        base = envs.envs[i].unwrapped
+        lk = getattr(base, "episode_lp_log", None) or []
+        last_plr_lp_len[i] = len(lk)
+    if num_envs == 0:
+        return [], last_plr_lp_len
+    lk0 = getattr(envs.envs[0].unwrapped, "episode_lp_log", None) or []
+    return [float(x) for x in lk0], last_plr_lp_len
+
+
+def _append_episode_lp_from_env(envs, env_index: int, episode_lp_log: list, last_plr_lp_len: list) -> None:
+    """Append any new PLR LP values from this env (same cadence as MetaDriveEnv.logScores)."""
+    base = envs.envs[env_index].unwrapped
+    lk = getattr(base, "episode_lp_log", None) or []
+    n = len(lk)
+    prev = last_plr_lp_len[env_index]
+    if n > prev:
+        for k in range(prev, n):
+            episode_lp_log.append(float(lk[k]))
+        last_plr_lp_len[env_index] = n
+
+
+def _write_run_to_csv(
+    results_csv_path: str,
+    run_name: str,
+    args: Args,
+    episode_returns_log: list,
+    episode_lengths_log: list,
+    episode_lp_log: list,
+    eval_returns_log: list,
+    final_sps: int,
+) -> None:
+    """Append one run row to runs_results.csv (same columns as former Excel export)."""
+    mean_return = float(np.mean(episode_returns_log)) if episode_returns_log else np.nan
+    std_return = (
+        float(np.std(episode_returns_log))
+        if len(episode_returns_log) > 1
+        else (0.0 if episode_returns_log else np.nan)
+    )
+    mean_length = float(np.mean(episode_lengths_log)) if episode_lengths_log else np.nan
+    mean_eval = float(np.mean(eval_returns_log)) if eval_returns_log else ""
+    std_eval = (
+        float(np.std(eval_returns_log))
+        if len(eval_returns_log) > 1
+        else (0.0 if len(eval_returns_log) == 1 else "")
+    )
+    episodic_returns_str = str(episode_returns_log) if episode_returns_log else ""
+    episodic_lengths_str = (
+        str(episode_lengths_log) if episode_lengths_log is not None else "[]"
+    )
+    lp_per_episode_str = str(episode_lp_log) if episode_lp_log else ""
+    eval_returns_str = str(eval_returns_log) if eval_returns_log else ""
+    row_values = {
+        "run_name": run_name,
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "seed": args.seed,
+        "replay_resample_prob": args.replay_resample_prob,
+        "total_timesteps": args.total_timesteps,
+        "num_envs": args.num_envs,
+        "learning_rate": args.learning_rate,
+        "gamma": args.gamma,
+        "exp_name": args.exp_name,
+        "eval_episodes": args.eval_episodes,
+        "eval_max_steps": args.eval_max_steps if args.eval_max_steps > 0 else "",
+        "mean_episodic_return": mean_return,
+        "std_episodic_return": std_return,
+        "mean_episodic_length": mean_length,
+        "num_episodes": len(episode_returns_log),
+        "SPS": final_sps,
+        "episodic_returns": episodic_returns_str,
+        "episodic_lengths": episodic_lengths_str,
+        "lp_per_episode": lp_per_episode_str,
+        "mean_eval_return": mean_eval,
+        "std_eval_return": std_eval,
+        "num_eval_episodes": len(eval_returns_log),
+        "eval_returns": eval_returns_str,
+    }
+    try:
+        append_run_row_csv(results_csv_path, row_values)
+        print(f"Run saved: results appended to {results_csv_path}")
+    except Exception as e:
+        print(f"Could not write CSV: {e}")
+
+
 if __name__ == "__main__":
     args = tyro.cli(Args)
     # Resolve paths relative to Work (parent of policy/) so they work regardless of cwd
@@ -280,7 +363,7 @@ if __name__ == "__main__":
         args.model_to_evaluate_path = os.path.normpath(os.path.join(_work_dir, args.model_to_evaluate_path))
     if args.buffer_dir is None:
         args.buffer_dir = default_buffer_dir(
-            _work_dir, args.replay_resample_prob, args.sampler_type, args.plr_stale_coef, args.seed
+            _work_dir, args.replay_resample_prob, args.sampler_type, args.seed
         )
     elif not os.path.isabs(args.buffer_dir):
         args.buffer_dir = os.path.normpath(os.path.join(_work_dir, args.buffer_dir))
@@ -293,11 +376,11 @@ if __name__ == "__main__":
     )
     run_name = (
         f"p{args.replay_resample_prob}s{args.sampler_type}"
-        f"st{_float_slug(args.plr_stale_coef)}"
         f"{datetime.now().strftime('%H%M')}"
     )
-    results_excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs_results.xlsx")
+    results_csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs_results.csv")
     episode_returns_log, episode_lengths_log = [], []
+    final_sps = 0
     if args.track:
         import wandb
 
@@ -332,6 +415,7 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     next_obs_np, _ = envs.reset(seed=args.seed)
+    episode_lp_log, last_plr_lp_len = _episode_lp_log_init_from_envs(envs, args.num_envs)
     obs_shape = tuple(next_obs_np.shape[1:])
     obs_dim = int(np.prod(obs_shape))
     action_dim = int(np.prod(envs.single_action_space.shape))
@@ -344,24 +428,50 @@ if __name__ == "__main__":
         agent.eval()
         obs = torch.Tensor(next_obs_np).to(device)
         episode_returns = np.zeros(args.num_envs, dtype=np.float32)
+        steps_this_episode = np.zeros(args.num_envs, dtype=np.int32)
+        eval_returns_log = []
         completed = 0
+        use_eval_step_cap = args.eval_max_steps > 0 and args.num_envs == 1
         while completed < args.eval_episodes:
             with torch.no_grad():
                 # Sampled evaluation: use stochastic policy action (tanh-bounded).
                 action, _, _, _ = agent.get_action_and_value(obs)
             next_obs, reward, terminations, truncations, _ = envs.step(action.cpu().numpy())
             episode_returns += reward
+            steps_this_episode += 1
             done = np.logical_or(terminations, truncations)
+            force_reset_needed = False
+            if use_eval_step_cap and steps_this_episode[0] >= args.eval_max_steps and not done[0]:
+                done[0] = True
+                force_reset_needed = True
             for i, d in enumerate(done):
                 if d:
-                    print(f"eval_return: {episode_returns[i]}")
+                    r = float(episode_returns[i])
+                    eval_returns_log.append(r)
+                    print(f"eval_return: {r}")
                     completed += 1
                     episode_returns[i] = 0.0
+                    steps_this_episode[i] = 0
                     if completed >= args.eval_episodes:
                         break
-            obs = torch.Tensor(next_obs).to(device)
+            if force_reset_needed and completed < args.eval_episodes:
+                next_obs_np, _ = envs.reset(seed=args.seed + 1 + completed)
+                obs = torch.Tensor(next_obs_np).to(device)
+            else:
+                obs = torch.Tensor(next_obs).to(device)
         envs.close()
         writer.close()
+        _write_run_to_csv(
+            results_csv_path,
+            run_name,
+            args,
+            episode_returns_log,
+            episode_lengths_log,
+            episode_lp_log,
+            eval_returns_log,
+            0,
+        )
+        print("Run saved (evaluate_model: eval-only, no training).")
         raise SystemExit(0)
 
     # ALGO Logic: Storage setup
@@ -379,7 +489,6 @@ if __name__ == "__main__":
     next_progress = progress_interval
     next_obs = torch.Tensor(next_obs_np).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    final_sps = 0
     # Manual episode tracking (env infos often missing in vector env); used for Excel/logs.
     episode_returns_buf = np.zeros(args.num_envs, dtype=np.float64)
     episode_lengths_buf = np.zeros(args.num_envs, dtype=np.int32)
@@ -443,6 +552,7 @@ if __name__ == "__main__":
                         summary = f"ended (reason={reason}, outcome={outcome})"
                     episode_returns_log.append(r_val)
                     episode_lengths_log.append(l_val)
+                    _append_episode_lp_from_env(envs, i, episode_lp_log, last_plr_lp_len)
                     print(
                         f"episode_end | {summary} | reward={r_val:.4f}, length={l_val}, global_step={global_step}"
                     )
@@ -551,7 +661,7 @@ if __name__ == "__main__":
         metadrive_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         runs_dir = os.path.join(metadrive_dir, "runs")
         os.makedirs(runs_dir, exist_ok=True)
-        # Save model with same name as run_name: p<prob>s<sampler>st<stale><HHMM>.pt
+        # Save model with same name as run_name: p<prob>s<sampler><HHMM>.pt
         model_path = os.path.join(runs_dir, f"{run_name}.pt")
         torch.save(agent.state_dict(), model_path)
         model_path_abs = os.path.abspath(model_path)
@@ -618,60 +728,16 @@ if __name__ == "__main__":
                 obs = torch.Tensor(next_obs).to(device)
         print(f"eval_after_train: ran {args.eval_episodes} episodes (same envs as training, max_steps={args.max_steps}, eval_step_cap={args.eval_max_steps if use_eval_step_cap else 'off'})")
 
-    if load_workbook is not None and Workbook is not None:
-        mean_return = float(np.mean(episode_returns_log)) if episode_returns_log else np.nan
-        std_return = float(np.std(episode_returns_log)) if len(episode_returns_log) > 1 else (0.0 if episode_returns_log else np.nan)
-        mean_length = float(np.mean(episode_lengths_log)) if episode_lengths_log else np.nan
-        mean_eval = float(np.mean(eval_returns_log)) if eval_returns_log else ""
-        std_eval = float(np.std(eval_returns_log)) if len(eval_returns_log) > 1 else (0.0 if len(eval_returns_log) == 1 else "")
-        header = [
-            "run_name", "time", "seed", "replay_resample_prob", "total_timesteps", "num_envs", "learning_rate", "gamma",
-            "exp_name", "eval_episodes", "eval_max_steps",
-            "mean_episodic_return", "std_episodic_return", "mean_episodic_length", "num_episodes", "SPS",
-            "episodic_returns",
-            "mean_eval_return", "std_eval_return", "num_eval_episodes", "eval_returns",
-        ]
-        episodic_returns_str = str(episode_returns_log) if episode_returns_log else ""
-        eval_returns_str = str(eval_returns_log) if eval_returns_log else ""
-        row = [
-            run_name,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            args.seed,
-            args.replay_resample_prob,
-            args.total_timesteps,
-            args.num_envs,
-            args.learning_rate,
-            args.gamma,
-            args.exp_name,
-            args.eval_episodes,
-            args.eval_max_steps if args.eval_max_steps > 0 else "",
-            mean_return,
-            std_return,
-            mean_length,
-            len(episode_returns_log),
-            final_sps,
-            episodic_returns_str,
-            mean_eval,
-            std_eval,
-            len(eval_returns_log),
-            eval_returns_str,
-        ]
-        try:
-            if os.path.isfile(results_excel_path):
-                wb = load_workbook(results_excel_path)
-                ws = wb.active
-            else:
-                wb = Workbook()
-                ws = wb.active
-                ws.append(header)
-            ws.append(row)
-            wb.save(results_excel_path)
-            print(f"Run saved: results appended to {results_excel_path}")
-        except Exception as e:
-            print(f"Could not write Excel: {e}")
-    else:
-        print("Excel logging skipped: pip install openpyxl")
-
     print("Run saved.")
     envs.close()
     writer.close()
+    _write_run_to_csv(
+        results_csv_path,
+        run_name,
+        args,
+        episode_returns_log,
+        episode_lengths_log,
+        episode_lp_log,
+        eval_returns_log,
+        final_sps,
+    )
