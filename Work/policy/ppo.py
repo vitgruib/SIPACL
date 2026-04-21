@@ -123,7 +123,7 @@ class Args:
     """scene buffer dir (scene_*.bin and buffer_*.npy); default under Work/buffer_runs/ (see default_buffer_dir, _float_slug)"""
     buffer_max: int = 5000
     """max buffered scenes; FIFO eviction when full"""
-    lp_strategy: str = "l1"
+    lp_strategy: str = "pvl"
     """learning-progress formula for PLR scoring; see MetaDriveEnv._lp_delta() for supported values"""
 
     # Algorithm specific arguments
@@ -203,6 +203,8 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             buffer_dir=args.buffer_dir,
             buffer_max=args.buffer_max,
             lp_strategy=args.lp_strategy,
+            gamma=args.gamma,
+            gae_lambda=args.gae_lambda,
         )
 
         # Keep flattening because policy network expects a flat Box observation tensor.
@@ -521,6 +523,8 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+
+            envs.call("log_step_data", reward, values[step].cpu().numpy())
 
             # Track episode return/length ourselves (vector env often omits episode in infos).
             episode_returns_buf += reward

@@ -47,7 +47,9 @@ class MetaDriveEnv(gym.Env):
         buffer_dir: Optional[str] = None,
         replay_resample_prob: float = 0.5,
         buffer_max: int = DEFAULT_BUFFER_MAX,
-        lp_strategy: str = "l1",
+        lp_strategy: str = "pvl",
+        gamma: float = 0.99,
+        gae_lambda: float = 0.95,
     ):
         """
         buffer_dir: Directory for scene buffer files (scene_*.bin and *_.npy).
@@ -55,7 +57,10 @@ class MetaDriveEnv(gym.Env):
             Use -1 to disable replay (always generate new scenes). In [0, 1] to enable.
         buffer_max: Maximum buffered scenes; oldest removed (FIFO) when exceeded.
         lp_strategy: Which learning-progress formula to use for PLR scoring.
-            Currently supported: "l1" (|Δ mean reward|). Add new variants in _lp_delta().
+            Currently supported: "l1" (|Δ mean reward|), "pvl" (positive value loss).
+            Add new variants in _lp_delta().
+        gamma: Discount factor (used by PVL strategy for GAE computation).
+        gae_lambda: GAE lambda (used by PVL strategy for GAE computation).
         LP EMA beta and rank alpha are fixed (DEFAULT_LP_EMA_BETA, DEFAULT_LP_RANK_ALPHA), not CLI args.
         """
         if observation_space is None:
@@ -90,6 +95,8 @@ class MetaDriveEnv(gym.Env):
         self.is_special_training = replay_resample_prob >= 0
         self.buffer_p = max(0.0, min(1.0, replay_resample_prob)) if self.is_special_training else 0.0
         self.lp_strategy = lp_strategy
+        self.gamma = gamma
+        self.gae_lambda = gae_lambda
         self.lp_ema_beta = max(1e-6, min(1.0, float(DEFAULT_LP_EMA_BETA)))
         self.buffer_max = max(1, int(buffer_max))
         self.lp_rank_alpha = max(1e-6, min(10.0, float(DEFAULT_LP_RANK_ALPHA)))
@@ -125,6 +132,9 @@ class MetaDriveEnv(gym.Env):
         self.buffer_lp_ema = empty
         self._plr_episode_seq = 0
         self.episode_lp_log: list[float] = []
+
+        self._ep_rewards = []
+        self._ep_values = []
 
         self.working_index = -1
         self.episode_mode = NEW
@@ -214,6 +224,8 @@ class MetaDriveEnv(gym.Env):
             try:
                 scene, self.working_index, self.episode_mode = self._pick_scene()
                 self.counting_reward = 0
+                self._ep_rewards.clear()
+                self._ep_values.clear()
                 step_limit = self._step_limit
                 with self.simulator.simulateStepped(scene, maxSteps=step_limit) as simulation:
                     steps_taken = 0
@@ -293,6 +305,11 @@ class MetaDriveEnv(gym.Env):
         # self.env.render()
         pass
 
+    def log_step_data(self, reward, value):
+        """Called by PPO each step to feed per-step data for PVL computation."""
+        self._ep_rewards.append(float(reward))
+        self._ep_values.append(float(value))
+
     def close(self):
         if self._closed:
             return
@@ -313,6 +330,23 @@ class MetaDriveEnv(gym.Env):
         """
         if self.lp_strategy == "l1":
             return abs(mean_r - prev_mean_r)
+        elif self.lp_strategy == "pvl":
+            if len(self._ep_rewards) < 1 or len(self._ep_values) < 1:
+                return 0.0
+            n = len(self._ep_rewards)
+            lastgaelam = 0.0
+            advantages = [0.0] * n
+            gamma, lam = self.gamma, self.gae_lambda
+            for t in reversed(range(n)):
+                if t == n - 1:
+                    next_v, nextnonterminal = 0.0, 0.0
+                else:
+                    next_v = self._ep_values[t + 1]
+                    nextnonterminal = 1.0
+                delta = self._ep_rewards[t] + gamma * next_v * nextnonterminal - self._ep_values[t]
+                advantages[t] = lastgaelam = delta + gamma * lam * nextnonterminal * lastgaelam
+                advantages[t] = max(advantages[t], 0.0)
+            return sum(advantages) / len(advantages)
         raise ValueError(f"Unknown lp_strategy: {self.lp_strategy!r}")
 
     def _compute_learning_progress(
