@@ -102,10 +102,10 @@ class Args:
     save_model: bool = True
     """whether to save model to the `runs/{run_name}` folder"""
     evaluate_model: bool = False
-    """if True, skip training and only evaluate the model at model_to_evaluate_path"""
+    """if True, skip training and only evaluate (always new random scenes; no PLR replay)"""
     eval_after_train: bool = True
-    """if True, run evaluation for eval_episodes after training (same run)"""
-    eval_episodes: int = 100
+    """if True, run evaluation for eval_episodes after training (always new random scenes; no PLR replay)"""
+    eval_episodes: int = 50
     """number of episodes to run when evaluating (evaluate_model or eval_after_train)"""
     eval_max_steps: int = 1000
     """fixed max steps per eval episode so returns are comparable; -1 uses training max_steps"""
@@ -171,9 +171,10 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=None):
+def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=None, replay_resample_prob=None):
     def thunk():
         steps = max_steps_override if max_steps_override is not None else args.max_steps
+        rrp = args.replay_resample_prob if replay_resample_prob is None else replay_resample_prob
         try:
             scenario = (scenic.scenarioFromFile(args.scenic_file,
                                             model=args.model,
@@ -199,7 +200,7 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
                 timestep=0.1,
             ),
             max_steps=steps,
-            replay_resample_prob=args.replay_resample_prob,
+            replay_resample_prob=rrp,
             buffer_dir=args.buffer_dir,
             buffer_max=args.buffer_max,
             lp_strategy=args.lp_strategy,
@@ -410,9 +411,13 @@ if __name__ == "__main__":
     print(f"Using device: {device}" + (f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else ""))
 
 
-    # env setup
+    # env setup: eval-only runs use replay_resample_prob=-1 (always fresh random scenes, no PLR buffer)
+    _train_rrp = -1.0 if args.evaluate_model else None
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+        [
+            make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=_train_rrp)
+            for i in range(args.num_envs)
+        ]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
@@ -694,6 +699,13 @@ if __name__ == "__main__":
 
     if args.eval_after_train:
         agent.eval()
+        envs.close()
+        envs = gym.vector.SyncVectorEnv(
+            [
+                make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=-1.0)
+                for i in range(args.num_envs)
+            ]
+        )
         next_obs_np, _ = envs.reset(seed=args.seed + 1)
         obs = torch.Tensor(next_obs_np).to(device)
         episode_returns_eval = np.zeros(args.num_envs, dtype=np.float32)

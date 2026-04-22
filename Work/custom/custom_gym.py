@@ -1,4 +1,5 @@
 from scenic.core.simulators import Simulator, Simulation
+from scenic.syntax import veneer as scenic_veneer
 from scenic.core.scenarios import Scenario
 import gymnasium as gym
 from gymnasium import spaces
@@ -217,6 +218,17 @@ class MetaDriveEnv(gym.Env):
         file_id = int(np.max(self.buffer_filenames)) + 1 if n > 0 else 0
         self._save_scene(file_id, scene)
         self.buffer_filenames = np.append(self.buffer_filenames, file_id)
+        # Keep buffer_* arrays the same length as buffer_filenames immediately. Otherwise a reset
+        # (ResetException) before logScores() leaves an extra filename without LP rows → IndexError.
+        self.buffer_last_reward = np.append(self.buffer_last_reward, np.nan)
+        self.buffer_learning_potential = np.append(
+            self.buffer_learning_potential,
+            np.asarray(self._NEW_SCENE_LEARNING_POTENTIAL, dtype=np.float64),
+        )
+        self.buffer_lp_ema = np.append(
+            self.buffer_lp_ema,
+            np.asarray(self._NEW_SCENE_LEARNING_POTENTIAL, dtype=np.float64),
+        )
         return scene, len(self.buffer_filenames) - 1, NEW
 
     def _make_run_loop(self):
@@ -316,6 +328,20 @@ class MetaDriveEnv(gym.Env):
         # Cannot safely do I/O during interpreter shutdown (__del__ with sys.meta_path is None).
         if getattr(sys, "meta_path", None) is None:
             return
+        # Unwind the run-loop generator so ``simulateStepped``'s ``finally`` runs ``cleanup()``
+        # and ``veneer.endSimulation``; otherwise a later ``scenarioFromFile`` hits
+        # ``assert currentSimulation is None`` during compile.
+        if self.loop is not None:
+            try:
+                self.loop.close()
+            except Exception:
+                pass
+            self.loop = None
+        if scenic_veneer.currentSimulation is not None:
+            try:
+                scenic_veneer.endSimulation(scenic_veneer.currentSimulation)
+            except Exception:
+                pass
         if self.episode_rewards:
             path = f"{self._buffer_dir}/episode_rewards.npy"
             with io.open(path, "wb") as f:
@@ -383,6 +409,11 @@ class MetaDriveEnv(gym.Env):
                     f"Warning: working index {i} out of bounds for buffer_last_reward len {len(self.buffer_last_reward)}"
                 )
                 return
+            if i >= len(self.buffer_filenames) or i >= len(self.buffer_learning_potential):
+                print(
+                    f"Warning: working index {i} out of sync (filenames={len(self.buffer_filenames)} lp={len(self.buffer_learning_potential)}); skip logScores update"
+                )
+                return
             lp_new = self._compute_learning_progress(
                 mean_r, self.buffer_last_reward[i], self.buffer_lp_ema[i]
             )
@@ -390,12 +421,10 @@ class MetaDriveEnv(gym.Env):
             self.buffer_lp_ema[i] = lp_new
             self.buffer_last_reward[i] = mean_r
         else:
-            self.buffer_last_reward = np.append(self.buffer_last_reward, mean_r)
-            self.buffer_learning_potential = np.append(
-                self.buffer_learning_potential,
-                self._NEW_SCENE_LEARNING_POTENTIAL,
-            )
-            self.buffer_lp_ema = np.append(self.buffer_lp_ema, self._NEW_SCENE_LEARNING_POTENTIAL)
+            # NEW: row was pre-allocated in _pick_scene(); fill mean reward (LP stays at new-scene default until replay).
+            if len(self.buffer_filenames) == 0:
+                return
+            self.buffer_last_reward[-1] = float(mean_r)
             self._force_resample_next = True
 
         self._plr_episode_seq += 1
@@ -404,18 +433,24 @@ class MetaDriveEnv(gym.Env):
         lp_log_path = os.path.join(self._buffer_dir, "lp_episode_log.csv")
         write_lp_row = False
         slot, fid, lp_val, mode_s = -1, -1, 0.0, ""
-        if self.episode_mode == RESAMPLE and 0 <= i < len(self.buffer_filenames):
+        n_lp = len(self.buffer_learning_potential)
+        if self.episode_mode == RESAMPLE and 0 <= i < len(self.buffer_filenames) and i < n_lp:
             slot = i
             fid = int(self.buffer_filenames[slot])
             lp_val = float(self.buffer_learning_potential[slot])
             mode_s = "RESAMPLE"
             write_lp_row = True
-        elif self.episode_mode == NEW and len(self.buffer_filenames) > 0:
+        elif self.episode_mode == NEW and len(self.buffer_filenames) > 0 and n_lp > 0:
             slot = len(self.buffer_filenames) - 1
-            fid = int(self.buffer_filenames[slot])
-            lp_val = float(self.buffer_learning_potential[slot])
-            mode_s = "NEW"
-            write_lp_row = True
+            if slot >= n_lp:
+                print(
+                    f"Warning: skip LP row (slot={slot} lp_len={n_lp}); buffer should stay synced after _pick_scene"
+                )
+            else:
+                fid = int(self.buffer_filenames[slot])
+                lp_val = float(self.buffer_learning_potential[slot])
+                mode_s = "NEW"
+                write_lp_row = True
         if write_lp_row:
             self.episode_lp_log.append(float(lp_val))
         try:

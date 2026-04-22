@@ -108,9 +108,6 @@ rich==14.2.0
 rtree==1.4.1
 rv-ltl==0.1.0
 sb3_contrib==2.7.0
-# Vendored Scenic / MetaDrive live in ./Scenic and ./metadrive at repo root. They are not listed
-# here as -e lines because pip resolves those paths from your shell cwd, not this file's folder.
-# From repo root: pip install -r requirements-dev.txt   (see README).
 scikit-image==0.25.2
 scikit-learn==1.7.2
 scipy==1.16.2
