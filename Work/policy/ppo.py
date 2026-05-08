@@ -41,7 +41,7 @@ from run_results_io import append_run_row_csv
 
 
 def _float_slug(x: float) -> str:
-    """Filesystem-safe token for a float (no '-' in names)."""
+    """Converts a float to a string safe for filenames, preserving uniqueness and order (sorts lexicographically same as numerically)."""
     if x == int(x):
         ix = int(x)
         return f"n{abs(ix)}" if ix < 0 else str(abs(ix))
@@ -74,6 +74,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
+    # --- CleanRL / Hugging Face args (not tested or maintained idk if it works) ---
     track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "cleanRL"
@@ -86,12 +87,13 @@ class Args:
     """whether to upload the saved model to huggingface"""
     hf_entity: str = ""
     """the user or org name of the model repository from the Hugging Face Hub"""
+    # --- end CleanRL / Hugging Face args ---
 
 
     # Scenic specific arguments (rl_mobil scenario + Town06; controllers in scenarios/controllers/)
     scenic_file: str = "./scenarios/rl_mobil.scenic"
     """path to the Scenic program defining the environment"""
-    max_steps: int = 1000
+    max_steps: int = 100000
     """the maximum number of steps for any given episode; episodes truncate after this"""
     model: str = "scenic.simulators.metadrive.model"
     """underlying model for the scenic file"""
@@ -99,37 +101,40 @@ class Args:
     """Sumo/OpenDRIVE map for the env (rl_mobil uses Town06)"""
     sampler_type: str = "random"
     """ sampling type for generating scenes"""
-    save_model: bool = True
+    save_model: bool = False
     """whether to save model to the `runs/{run_name}` folder"""
-    evaluate_model: bool = False
+    evaluate_model: bool = True
     """if True, skip training and only evaluate (always new random scenes; no PLR replay)"""
-    eval_after_train: bool = True
+    eval_after_train: bool = False
     """if True, run evaluation for eval_episodes after training (always new random scenes; no PLR replay)"""
-    eval_episodes: int = 50
+    eval_episodes: int = 5
     """number of episodes to run when evaluating (evaluate_model or eval_after_train)"""
     eval_max_steps: int = 1000
     """fixed max steps per eval episode so returns are comparable; -1 uses training max_steps"""
-    model_to_evaluate_path: str = "runs/ACL_MetaDrive__ppo__1__resample-1__1772936486.pt"
+    model_to_evaluate_path: str = "runs\p0.75srandom1813.pt"
     """Path for model to evaluate when evaluate_model is True"""
-    render: Optional[bool] = False
+    render: Optional[bool] = True
     """override rendering (default: true for eval, false otherwise)"""
     render3d: bool = False
-    """override 3D rendering (default: true)"""
+    """enable 3D rendering; only meaningful when render is also enabled"""
 
-    # Prioritized level replay (MetaDriveEnv)
+    # Prioritized Level Replay (PLR) — MetaDriveEnv
+    # Each episode, the env scores the scene it just ran with a Learning Progress (LP) metric.
+    # At the start of the next episode it either draws a scene from the buffer (prob=replay_resample_prob),
+    # sampling proportional to LP rank, or generates a fresh random scene (prob=1-replay_resample_prob).
+    # LP=pvl (Positive Value Loss): mean(max(GAE_delta, 0)) over the episode's steps — a proxy for
+    # how much the critic's predictions are still improving on that scene. High PVL = scene is still
+    # informative; the buffer prioritizes replaying those scenes more often.
     replay_resample_prob: float = .5
     """probability of resampling from buffer vs new scene; use -1 to disable replay"""
     buffer_dir: Optional[str] = None
     """scene buffer dir (scene_*.bin and buffer_*.npy); default under Work/buffer_runs/ (see default_buffer_dir, _float_slug)"""
     buffer_max: int = 5000
     """max buffered scenes; FIFO eviction when full"""
-    lp_strategy: str = "pvl"
-    """learning-progress formula for PLR scoring; see MetaDriveEnv._lp_delta() for supported values"""
-
     # Algorithm specific arguments
     env_id: str = "ACL_MetaDrive"
     """the id of the environment"""
-    total_timesteps: int = 100000
+    total_timesteps: int = 5000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -171,7 +176,12 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=None, replay_resample_prob=None):
+def _resolve_render(is_eval: bool) -> bool:
+    """Return effective render bool: explicit --render overrides all paths; else True for eval, False for training."""
+    return args.render if args.render is not None else is_eval
+
+
+def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=None, replay_resample_prob=None, render=False):
     def thunk():
         steps = max_steps_override if max_steps_override is not None else args.max_steps
         rrp = args.replay_resample_prob if replay_resample_prob is None else replay_resample_prob
@@ -188,14 +198,13 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             raise
         #shape was [100 200   3]
         # OBS needs to be updated
-        render_flag = args.render if args.render is not None else args.evaluate_model
-        render3d_flag = args.render3d
+        render3d_flag = args.render3d and render  # 3D requires render=True to have any effect
         env = MetaDriveEnv(
             scenario=scenario,
             simulator=CustomMetaDriveSimulator(
                 sumo_map=args.map,
                 max_steps=steps,
-                render=render_flag,
+                render=render,
                 render3D=render3d_flag,
                 timestep=0.1,
             ),
@@ -203,7 +212,8 @@ def make_env(env_id, idx, capture_video, run_name, gamma, max_steps_override=Non
             replay_resample_prob=rrp,
             buffer_dir=args.buffer_dir,
             buffer_max=args.buffer_max,
-            lp_strategy=args.lp_strategy,
+            # PVL recomputes GAE inside the env at episode end; gamma/gae_lambda must match PPO's
+            # so the LP delta uses the same discount and eligibility trace as the policy update.
             gamma=args.gamma,
             gae_lambda=args.gae_lambda,
         )
@@ -252,17 +262,19 @@ class Agent(nn.Module):
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
+
         if action is None:
+            # Rollout: sample a new action and squash it to (-1, 1) with tanh.
             pre_tanh = probs.rsample()
             action = torch.tanh(pre_tanh)
         else:
-            # action is already squashed to (-1, 1); invert tanh for log-prob.
+            # PPO update: action already exists from the rollout; invert tanh to re-evaluate its log-prob.
             eps = 1e-6
             clipped = torch.clamp(action, -1.0 + eps, 1.0 - eps)
             pre_tanh = 0.5 * torch.log((1 + clipped) / (1 - clipped))
 
+        # Log-prob with a correction for the tanh squashing.
         log_prob = probs.log_prob(pre_tanh)
-        # Tanh correction
         log_prob = log_prob - torch.log(1 - action * action + 1e-6)
         log_prob = log_prob.sum(1)
         return action, log_prob, probs.entropy().sum(1), self.critic(x)
@@ -415,13 +427,14 @@ if __name__ == "__main__":
     _train_rrp = -1.0 if args.evaluate_model else None
     envs = gym.vector.SyncVectorEnv(
         [
-            make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=_train_rrp)
+            make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=_train_rrp, render=_resolve_render(is_eval=args.evaluate_model))
             for i in range(args.num_envs)
         ]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     next_obs_np, _ = envs.reset(seed=args.seed)
+    # Initialize per-run LP accumulator and per-env read offsets into each env's episode_lp_log.
     episode_lp_log, last_plr_lp_len = _episode_lp_log_init_from_envs(envs, args.num_envs)
     obs_shape = tuple(next_obs_np.shape[1:])
     obs_dim = int(np.prod(obs_shape))
@@ -529,6 +542,10 @@ if __name__ == "__main__":
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
+            # PVL data feed: push this step's reward and critic value estimate into the env's
+            # rolling buffer. When the episode ends, the env calls _lp_delta() which recomputes
+            # GAE over those buffered (reward, value) pairs, clamps the deltas to >=0, and
+            # returns their mean as the scene's LP score for the PLR buffer.
             envs.call("log_step_data", reward, values[step].cpu().numpy())
 
             # Track episode return/length ourselves (vector env often omits episode in infos).
@@ -561,6 +578,7 @@ if __name__ == "__main__":
                         summary = f"ended (reason={reason}, outcome={outcome})"
                     episode_returns_log.append(r_val)
                     episode_lengths_log.append(l_val)
+                    # Collect the LP score the env just computed for this completed episode.
                     _append_episode_lp_from_env(envs, i, episode_lp_log, last_plr_lp_len)
                     print(
                         f"episode_end | {summary} | reward={r_val:.4f}, length={l_val}, global_step={global_step}"
@@ -699,10 +717,13 @@ if __name__ == "__main__":
 
     if args.eval_after_train:
         agent.eval()
+        # Swap out training envs for fresh eval envs with replay_resample_prob=-1 so every
+        # episode draws a new random scene — eval returns should not be inflated by the PLR
+        # buffer replaying scenes the policy has already been trained on.
         envs.close()
         envs = gym.vector.SyncVectorEnv(
             [
-                make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=-1.0)
+                make_env(args.env_id, i, args.capture_video, run_name, args.gamma, replay_resample_prob=-1.0, render=_resolve_render(is_eval=True))
                 for i in range(args.num_envs)
             ]
         )

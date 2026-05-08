@@ -22,7 +22,7 @@ DOUBLE, RESAMPLE, NEW = 0, 1, 2
 # Max buffered scenes (FIFO eviction when exceeded).
 DEFAULT_BUFFER_MAX = 5000
 
-# Fixed PLR internals (not exposed on CLI): EMA on |Δ mean return/step|; rank sample ∝ 1/rank**alpha.
+# Fixed PLR internals (not exposed on CLI): EMA on PVL score; rank sample ∝ 1/rank**alpha.
 DEFAULT_LP_EMA_BETA = 0.2
 DEFAULT_LP_RANK_ALPHA = 1.0
 
@@ -32,6 +32,26 @@ class ResetException(Exception):
         super().__init__("Resetting")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MetaDriveEnv — Gymnasium wrapper around a Scenic/MetaDrive simulation.
+#
+# OVERVIEW
+# --------
+# Each episode runs one Scenic scene inside MetaDrive.  The env is a thin
+# wrapper: it drives a Python generator (_make_run_loop) that owns the
+# simulation, yielding observations back to PPO and receiving actions.
+#
+# PLR INTEGRATION
+# ---------------
+# When replay_resample_prob >= 0, the env maintains a scene buffer on disk.
+# At the start of each episode it either:
+#   (a) generates a fresh Scenic scene and adds it to the buffer, or
+#   (b) replays a buffered scene, chosen by LP-weighted rank sampling.
+# After every episode it scores the scene with a Learning Progress (LP)
+# metric (default: PVL) and updates that scene's slot in the buffer.
+# PPO feeds per-step (reward, value) data to the env via log_step_data();
+# the env uses those to compute LP when the episode ends.
+# ─────────────────────────────────────────────────────────────────────────────
 class MetaDriveEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
@@ -48,7 +68,6 @@ class MetaDriveEnv(gym.Env):
         buffer_dir: Optional[str] = None,
         replay_resample_prob: float = 0.5,
         buffer_max: int = DEFAULT_BUFFER_MAX,
-        lp_strategy: str = "pvl",
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
@@ -57,11 +76,8 @@ class MetaDriveEnv(gym.Env):
         replay_resample_prob: Probability of resampling from buffer vs new scene.
             Use -1 to disable replay (always generate new scenes). In [0, 1] to enable.
         buffer_max: Maximum buffered scenes; oldest removed (FIFO) when exceeded.
-        lp_strategy: Which learning-progress formula to use for PLR scoring.
-            Currently supported: "l1" (|Δ mean reward|), "pvl" (positive value loss).
-            Add new variants in _lp_delta().
-        gamma: Discount factor (used by PVL strategy for GAE computation).
-        gae_lambda: GAE lambda (used by PVL strategy for GAE computation).
+        gamma: Discount factor (used by PVL for GAE computation).
+        gae_lambda: GAE lambda (used by PVL for GAE computation).
         LP EMA beta and rank alpha are fixed (DEFAULT_LP_EMA_BETA, DEFAULT_LP_RANK_ALPHA), not CLI args.
         """
         if observation_space is None:
@@ -95,13 +111,14 @@ class MetaDriveEnv(gym.Env):
         os.makedirs(self._buffer_dir, exist_ok=True)
         self.is_special_training = replay_resample_prob >= 0
         self.buffer_p = max(0.0, min(1.0, replay_resample_prob)) if self.is_special_training else 0.0
-        self.lp_strategy = lp_strategy
         self.gamma = gamma
         self.gae_lambda = gae_lambda
         self.lp_ema_beta = max(1e-6, min(1.0, float(DEFAULT_LP_EMA_BETA)))
         self.buffer_max = max(1, int(buffer_max))
         self.lp_rank_alpha = max(1e-6, min(10.0, float(DEFAULT_LP_RANK_ALPHA)))
 
+        # On init, wipe any leftover scene/buffer files from a previous run in the same dir.
+        # Each run gets a unique buffer_dir (seed + pid), so this is just a safety clear.
         if self.is_special_training:
             for p in glob.glob(os.path.join(self._buffer_dir, "scene_*.bin")):
                 try:
@@ -111,8 +128,6 @@ class MetaDriveEnv(gym.Env):
             for name in (
                 "buffer_filenames.npy",
                 "buffer_learning_potential.npy",
-                "buffer_last_reward.npy",
-                "buffer_lp_ema.npy",
                 "plr_episode_seq.npy",
                 "episode_rewards.npy",
                 "episode_lp_values.npy",
@@ -129,8 +144,6 @@ class MetaDriveEnv(gym.Env):
         empty = np.array([])
         self.buffer_filenames = empty
         self.buffer_learning_potential = empty
-        self.buffer_last_reward = empty
-        self.buffer_lp_ema = empty
         self._plr_episode_seq = 0
         self.episode_lp_log: list[float] = []
 
@@ -141,8 +154,6 @@ class MetaDriveEnv(gym.Env):
         self.episode_mode = NEW
         self.counting_reward = 0
         self._closed = False
-        # When True, next _pick_scene must resample (so a newly added scene gets replayed once).
-        self._force_resample_next = False
         self._episode_steps = 0
 
     def _load_scene(self, index: int):
@@ -165,8 +176,6 @@ class MetaDriveEnv(gym.Env):
                 pass
             self.buffer_filenames = np.delete(self.buffer_filenames, 0)
             self.buffer_learning_potential = np.delete(self.buffer_learning_potential, 0)
-            self.buffer_last_reward = np.delete(self.buffer_last_reward, 0)
-            self.buffer_lp_ema = np.delete(self.buffer_lp_ema, 0)
 
     # Huge LP so a newly added scene is chosen when we force-resample on the next reset.
     _NEW_SCENE_LEARNING_POTENTIAL = 1e10
@@ -192,46 +201,51 @@ class MetaDriveEnv(gym.Env):
         return w / s
 
     def _pick_scene(self) -> Tuple:
+        """Decide what scene to run next and return (scene, buffer_index, mode).
+
+        Two paths:
+          RESAMPLE — with probability buffer_p, replay a buffered scene weighted
+            by LP rank (highest LP = most likely to be chosen).
+          NEW — generate a fresh Scenic scene, save it to disk, and add it to
+            the buffer with LP=1e10. PVL is computed at episode end and replaces
+            the placeholder immediately.
+        """
         if not self.is_special_training:
             scene, _ = self.scenario.generate(feedback=self.feedback_result)
             return scene, -1, NEW
         n = len(self.buffer_filenames)
-        lp_len, lr_len = len(self.buffer_learning_potential), len(self.buffer_last_reward)
-        # Guarantee we resample next after adding a new scene (replay it once); huge LP picks that scene.
-        lp_ema_len = len(self.buffer_lp_ema)
-        buf_ok = n > 0 and n == lp_len == lr_len == lp_ema_len
+        lp_len = len(self.buffer_learning_potential)
+        buf_ok = n > 0 and n == lp_len
         lp_scores = np.asarray(self.buffer_learning_potential, dtype=np.float64)
-        if self._force_resample_next and buf_ok:
-            self._force_resample_next = False
+        if random.uniform(0, 1) < self.buffer_p and n > 0 and buf_ok:
+            # Probabilistic replay: sample a scene proportional to LP rank.
             probs = self._replay_probs_from_lp(lp_scores)
             pos = int(np.random.choice(n, p=probs))
             file_id = int(self.buffer_filenames[pos])
             return self._load_scene(file_id), pos, RESAMPLE
-        if not self._force_resample_next and random.uniform(0, 1) < self.buffer_p and n > 0 and buf_ok:
-            probs = self._replay_probs_from_lp(lp_scores)
-            pos = int(np.random.choice(n, p=probs))
-            file_id = int(self.buffer_filenames[pos])
-            return self._load_scene(file_id), pos, RESAMPLE
+        # New scene: generate, save to disk, append to buffer arrays.
         scene, _ = self.scenario.generate(feedback=self.feedback_result)
         self._evict_oldest_if_full()
         n = len(self.buffer_filenames)
         file_id = int(np.max(self.buffer_filenames)) + 1 if n > 0 else 0
         self._save_scene(file_id, scene)
         self.buffer_filenames = np.append(self.buffer_filenames, file_id)
-        # Keep buffer_* arrays the same length as buffer_filenames immediately. Otherwise a reset
-        # (ResetException) before logScores() leaves an extra filename without LP rows → IndexError.
-        self.buffer_last_reward = np.append(self.buffer_last_reward, np.nan)
+        # Pre-allocate LP slots immediately so buffer arrays stay in sync even if a
+        # ResetException fires before logScores() runs (which would leave a dangling filename).
         self.buffer_learning_potential = np.append(
             self.buffer_learning_potential,
-            np.asarray(self._NEW_SCENE_LEARNING_POTENTIAL, dtype=np.float64),
-        )
-        self.buffer_lp_ema = np.append(
-            self.buffer_lp_ema,
             np.asarray(self._NEW_SCENE_LEARNING_POTENTIAL, dtype=np.float64),
         )
         return scene, len(self.buffer_filenames) - 1, NEW
 
     def _make_run_loop(self):
+        """Generator that drives the simulation indefinitely.
+
+        The generator pauses at each yield, handing control back to PPO.
+        PPO sends an action via .send(action) to advance one step, or throws
+        a ResetException to abort the current episode and start a new one.
+        This avoids tearing down and rebuilding the simulator between episodes.
+        """
         while True:
             try:
                 scene, self.working_index, self.episode_mode = self._pick_scene()
@@ -295,16 +309,19 @@ class MetaDriveEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         if self.loop is None:
+            # First reset: create the generator and prime it to the first yield (first observation).
             print("self loop doesnt exist, creating new one")
             self.loop = self._make_run_loop()
-            observation, info = next(self.loop) # not doing self.scene.send(action) just yet
+            observation, info = next(self.loop)
         else:
+            # Subsequent resets: throw ResetException into the generator to abort the current
+            # episode mid-simulation; the generator catches it and starts the next episode.
             observation, info = self.loop.throw(ResetException())
-
-
         return observation, info
-        
+
     def step(self, action):
+        # Send the action into the generator; it advances the simulation one step and yields
+        # back (obs, reward, terminated, truncated, info).
         assert self.loop is not None, "must call reset() before step()"
         observation, reward, terminated, truncated, info = self.loop.send(action)
         return observation, reward, terminated, truncated, info
@@ -349,83 +366,77 @@ class MetaDriveEnv(gym.Env):
         self.simulator.destroy()
         self._closed = True
         
-    def _lp_delta(self, mean_r: float, prev_mean_r: float) -> float:
-        """Raw LP score before EMA smoothing.  Dispatches on self.lp_strategy.
+    def _lp_delta(self) -> float:
+        """Compute the raw PVL score for the episode that just ended.
 
-        Add new strategies here as elif branches.
+        Recomputes GAE over the episode's (reward, value) pairs (fed by log_step_data),
+        clamps each advantage to >= 0, and returns the mean. Only positive TD errors
+        count — steps where the critic was still surprised. High PVL = the policy is
+        still learning on this scene.
         """
-        if self.lp_strategy == "l1":
-            return abs(mean_r - prev_mean_r)
-        elif self.lp_strategy == "pvl":
-            if len(self._ep_rewards) < 1 or len(self._ep_values) < 1:
-                return 0.0
-            n = len(self._ep_rewards)
-            lastgaelam = 0.0
-            advantages = [0.0] * n
-            gamma, lam = self.gamma, self.gae_lambda
-            for t in reversed(range(n)):
-                if t == n - 1:
-                    next_v, nextnonterminal = 0.0, 0.0
-                else:
-                    next_v = self._ep_values[t + 1]
-                    nextnonterminal = 1.0
-                delta = self._ep_rewards[t] + gamma * next_v * nextnonterminal - self._ep_values[t]
-                advantages[t] = lastgaelam = delta + gamma * lam * nextnonterminal * lastgaelam
-                advantages[t] = max(advantages[t], 0.0)
-            return sum(advantages) / len(advantages)
-        raise ValueError(f"Unknown lp_strategy: {self.lp_strategy!r}")
+        if len(self._ep_rewards) < 1 or len(self._ep_values) < 1:
+            return 0.0
+        n = len(self._ep_rewards)
+        lastgaelam = 0.0
+        advantages = [0.0] * n
+        gamma, lam = self.gamma, self.gae_lambda
+        for t in reversed(range(n)):
+            if t == n - 1:
+                # Terminal step: no next value, no bootstrapping.
+                next_v, nextnonterminal = 0.0, 0.0
+            else:
+                next_v = self._ep_values[t + 1]
+                nextnonterminal = 1.0
+            # GAE delta: TD error propagated backwards with lambda.
+            delta = self._ep_rewards[t] + gamma * next_v * nextnonterminal - self._ep_values[t]
+            advantages[t] = lastgaelam = delta + gamma * lam * nextnonterminal * lastgaelam
+            advantages[t] = max(advantages[t], 0.0)  # keep only positive surprises
+        return sum(advantages) / len(advantages)
 
-    def _compute_learning_progress(
-        self,
-        mean_r: float,
-        prev_mean_r: float,
-        old_ema: float,
-    ) -> float:
-        """EMA-smooth the raw LP score from _lp_delta.
+    def _compute_learning_progress(self, old_lp: float) -> float:
+        """EMA-smooth the raw PVL score and return the updated value for this buffer slot.
 
-        Args:
-            mean_r: Mean reward per step for the episode just finished.
-            prev_mean_r: Mean reward per step from the previous visit to this scene.
-            old_ema: EMA-smoothed LP from previous visits.
-
-        Returns:
-            Updated LP value for this buffer slot.
+        On the first real visit (old_lp is the 1e10 placeholder), skip smoothing
+        and return the raw score directly so the placeholder doesn't bias the EMA.
+        On subsequent visits, blend the new raw score with the running EMA:
+            new_lp = beta * raw + (1 - beta) * old_lp
+        This reduces noise from episode-to-episode variance on the same scene.
         """
-        raw = self._lp_delta(mean_r, prev_mean_r)
-        if old_ema >= 0.5 * self._NEW_SCENE_LEARNING_POTENTIAL:
+        raw = self._lp_delta()
+        if old_lp >= 0.5 * self._NEW_SCENE_LEARNING_POTENTIAL:
+            # First real visit — discard the 1e10 placeholder and use raw score directly.
             return float(raw)
         beta = self.lp_ema_beta
-        return beta * raw + (1.0 - beta) * old_ema
+        return beta * raw + (1.0 - beta) * old_lp
 
     def logScores(self):
+        """Called at the end of every episode to update the PLR buffer.
+
+        Both NEW and RESAMPLE episodes compute PVL and update the buffer slot
+        immediately. NEW episodes replace the 1e10 placeholder on their first
+        run; RESAMPLE episodes EMA-smooth the new score against the prior value.
+
+        Also appends a row to lp_episode_log.csv and saves all buffer arrays
+        to disk so state survives a crash or keyboard interrupt.
+        """
         if not self.is_special_training:
             return
-        total = self.counting_reward
-        mean_r = total / float(self._episode_steps)
+        mean_r = self.counting_reward / float(self._episode_steps)
         i = self.working_index
         if self.episode_mode == RESAMPLE:
-            if i < 0 or i >= len(self.buffer_last_reward):
-                print(
-                    f"Warning: working index {i} out of bounds for buffer_last_reward len {len(self.buffer_last_reward)}"
-                )
-                return
-            if i >= len(self.buffer_filenames) or i >= len(self.buffer_learning_potential):
+            if i < 0 or i >= len(self.buffer_filenames) or i >= len(self.buffer_learning_potential):
                 print(
                     f"Warning: working index {i} out of sync (filenames={len(self.buffer_filenames)} lp={len(self.buffer_learning_potential)}); skip logScores update"
                 )
                 return
-            lp_new = self._compute_learning_progress(
-                mean_r, self.buffer_last_reward[i], self.buffer_lp_ema[i]
-            )
+            lp_new = self._compute_learning_progress(self.buffer_learning_potential[i])
             self.buffer_learning_potential[i] = lp_new
-            self.buffer_lp_ema[i] = lp_new
-            self.buffer_last_reward[i] = mean_r
         else:
-            # NEW: row was pre-allocated in _pick_scene(); fill mean reward (LP stays at new-scene default until replay).
+            # NEW: compute PVL immediately so the placeholder is replaced this episode.
             if len(self.buffer_filenames) == 0:
                 return
-            self.buffer_last_reward[-1] = float(mean_r)
-            self._force_resample_next = True
+            lp_new = self._compute_learning_progress(self.buffer_learning_potential[-1])
+            self.buffer_learning_potential[-1] = lp_new
 
         self._plr_episode_seq += 1
 
@@ -479,8 +490,6 @@ class MetaDriveEnv(gym.Env):
         for name, arr in [
             ("buffer_filenames.npy", self.buffer_filenames),
             ("buffer_learning_potential.npy", self.buffer_learning_potential),
-            ("buffer_last_reward.npy", self.buffer_last_reward),
-            ("buffer_lp_ema.npy", self.buffer_lp_ema),
             ("plr_episode_seq.npy", np.array([self._plr_episode_seq], dtype=np.int64)),
             ("episode_lp_values.npy", np.asarray(self.episode_lp_log, dtype=np.float64)),
         ]:
