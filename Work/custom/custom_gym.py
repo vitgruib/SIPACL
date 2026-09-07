@@ -383,12 +383,11 @@ class MetaDriveEnv(gym.Env):
         for t in reversed(range(n)):
             is_terminal = t == n - 1
             next_v = 0.0 if is_terminal else self._ep_values[t + 1]
-            nextnonterminal = 0.0 if is_terminal else 1.0
-            # GAE delta: TD error propagated backwards with lambda. The recursion
-            # carries the raw (unclamped) advantage; only the summed output below
-            # keeps just the positive surprises.
-            delta = self._ep_rewards[t] + gamma * next_v * nextnonterminal - self._ep_values[t]
-            advantage = delta + gamma * lam * nextnonterminal * advantage
+            # GAE delta: TD error propagated backwards with lambda. `not is_terminal`
+            # doubles as the 0/1 bootstrap mask. The recursion carries the raw
+            # (unclamped) advantage; only the summed output below keeps the positive surprises.
+            delta = self._ep_rewards[t] + gamma * next_v * (not is_terminal) - self._ep_values[t]
+            advantage = delta + gamma * lam * (not is_terminal) * advantage
             positive_advantage_sum += max(advantage, 0.0)
         return positive_advantage_sum / n
 
