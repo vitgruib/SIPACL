@@ -374,24 +374,23 @@ class MetaDriveEnv(gym.Env):
         count — steps where the critic was still surprised. High PVL = the policy is
         still learning on this scene.
         """
-        if len(self._ep_rewards) < 1 or len(self._ep_values) < 1:
-            return 0.0
         n = len(self._ep_rewards)
-        lastgaelam = 0.0
-        advantages = [0.0] * n
+        if n == 0 or len(self._ep_values) == 0:
+            return 0.0
         gamma, lam = self.gamma, self.gae_lambda
+        advantage = 0.0
+        positive_advantage_sum = 0.0
         for t in reversed(range(n)):
-            if t == n - 1:
-                # Terminal step: no next value, no bootstrapping.
-                next_v, nextnonterminal = 0.0, 0.0
-            else:
-                next_v = self._ep_values[t + 1]
-                nextnonterminal = 1.0
-            # GAE delta: TD error propagated backwards with lambda.
+            is_terminal = t == n - 1
+            next_v = 0.0 if is_terminal else self._ep_values[t + 1]
+            nextnonterminal = 0.0 if is_terminal else 1.0
+            # GAE delta: TD error propagated backwards with lambda. The recursion
+            # carries the raw (unclamped) advantage; only the summed output below
+            # keeps just the positive surprises.
             delta = self._ep_rewards[t] + gamma * next_v * nextnonterminal - self._ep_values[t]
-            advantages[t] = lastgaelam = delta + gamma * lam * nextnonterminal * lastgaelam
-            advantages[t] = max(advantages[t], 0.0)  # keep only positive surprises
-        return sum(advantages) / len(advantages)
+            advantage = delta + gamma * lam * nextnonterminal * advantage
+            positive_advantage_sum += max(advantage, 0.0)
+        return positive_advantage_sum / n
 
     def _compute_learning_progress(self, old_lp: float) -> float:
         """EMA-smooth the raw PVL score and return the updated value for this buffer slot.
