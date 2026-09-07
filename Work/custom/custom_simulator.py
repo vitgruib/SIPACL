@@ -23,7 +23,15 @@ import scenic.simulators.metadrive.utils as utils
 import numpy as np
 
 # Observation size expected by MetaDriveEnv (DEFAULT_OBS_SHAPE); keep in sync for vector env batching.
+# Layout (all entries normalized to [0, 1]):
+#   [0:10]  lane_line_detector cloud points (num_lasers=10; 1.0 = no lane-line/sidewalk hit within `distance`)
+#   [10:14] nearest-vehicle features: forward_offset, lateral_offset, distance, present
+#   [14:19] ego state: speed, heading_sin, heading_cos, steering, last throttle_brake
+# If lane_line_detector's num_lasers changes, OBS_SIZE (and DEFAULT_OBS_SHAPE in custom_gym.py) must change too.
 OBS_SIZE = 19
+
+# Normalization range (meters) for the nearest-vehicle relative-position features.
+NEAREST_CAR_RANGE = 50.0
 
 
 class CustomMetaDriveSimulator(DrivingSimulator):
@@ -145,15 +153,14 @@ class CustomMetaDriveSimulation(DrivingSimulation):
         self.result = None  # set when terminal so gym's done() is True
 
         step_result = self.client.reset()
-        if isinstance(step_result, tuple):
-            self.observation = np.asarray(step_result[0], dtype=np.float32)
-            self.info = step_result[1] if len(step_result) > 1 else {}
-        else:
-            self.observation = np.asarray(step_result, dtype=np.float32)
-            self.info = {}
+        self.info = step_result[1] if isinstance(step_result, tuple) and len(step_result) > 1 else {}
         self.reward = 0.0
         self.actions = [0.0, 0.0]  # list so gym can assign [steer, throttle_brake]
         super().__init__(scene, timestep=timestep, **kwargs)
+        # client.reset() ran before actors existed (DummyObservation, unusable anyway);
+        # build the real observation now that createObjectInSimulator has run and
+        # scene.objects[0].metaDriveActor is set.
+        self.observation = self._build_observation()
 
     def createObjectInSimulator(self, obj):
         converted_position = utils.scenicToMetaDrivePosition(
@@ -214,12 +221,10 @@ class CustomMetaDriveSimulation(DrivingSimulation):
 
         step_out = self.client.step([self.actions[0], self.actions[1]])
         if isinstance(step_out, (list, tuple)) and len(step_out) >= 5:
-            self.observation, _, _, _, self.info = step_out
-        elif isinstance(step_out, (list, tuple)) and len(step_out) >= 1:
-            self.observation = step_out[0]
-        else:
-            self.observation = step_out
-        self.observation = np.asarray(self.observation, dtype=np.float32)
+            self.info = step_out[4]
+        # step_out[0] is MetaDrive's DummyObservation output (always [0]) — ignored;
+        # we build the real observation from the lane-line lidar + scene state below.
+        self.observation = self._build_observation()
         self.reward = float(getattr(ego_obj, "reward", 0.0))
         ego_obj._reset_control()
 
@@ -242,6 +247,86 @@ class CustomMetaDriveSimulation(DrivingSimulation):
             elapsed = time.monotonic() - start_time
             if elapsed < self.timestep:
                 time.sleep(self.timestep - elapsed)
+
+    def _perceive_lane_lines(self, ego_actor):
+        """Ray-cast the lane_line_detector lidar from the ego and return its cloud points.
+
+        Each entry is in [0, 1]: 1.0 means no lane-line/sidewalk hit within `distance`,
+        smaller values mean a closer hit. See metadrive DistanceDetector.perceive.
+        """
+        cfg = self.client.config["vehicle_config"]["lane_line_detector"]
+        num_lasers, distance = cfg["num_lasers"], cfg["distance"]
+        if num_lasers <= 0 or distance <= 0:
+            return np.ones(0, dtype=np.float32)
+        sensor = self.client.engine.get_sensor("lane_line_detector")
+        result = sensor.perceive(
+            ego_actor,
+            self.client.engine.physics_world.static_world,
+            num_lasers=num_lasers,
+            distance=distance,
+            show=False,
+        )
+        return np.asarray(result.cloud_points, dtype=np.float32)
+
+    def _nearest_vehicle_features(self, ego_obj):
+        """Relative position of the nearest other vehicle, in the ego's local (forward/lateral) frame.
+
+        Returns [forward, lateral, distance, present], all normalized to [0, 1] using
+        NEAREST_CAR_RANGE. When no other vehicle exists, forward/lateral default to the
+        midpoint (0.5, "unknown") and distance defaults to 1.0 ("far"), with present=0.
+        """
+        ego_actor = ego_obj.metaDriveActor
+        ex, ey = ego_actor.position[0], ego_actor.position[1]
+        heading = ego_actor.heading_theta
+        cos_h, sin_h = math.cos(heading), math.sin(heading)
+
+        nearest_dist = None
+        nearest_forward = 0.0
+        nearest_lateral = 0.0
+        for obj in self.scene.objects[1:]:
+            if not obj.isVehicle:
+                continue
+            actor = getattr(obj, "metaDriveActor", None)
+            if actor is None:
+                continue
+            dx = actor.position[0] - ex
+            dy = actor.position[1] - ey
+            dist = math.hypot(dx, dy)
+            if nearest_dist is None or dist < nearest_dist:
+                nearest_dist = dist
+                # Rotate the relative vector into the ego's heading-aligned frame.
+                nearest_forward = dx * cos_h + dy * sin_h
+                nearest_lateral = -dx * sin_h + dy * cos_h
+
+        if nearest_dist is None:
+            return np.array([0.5, 0.5, 1.0, 0.0], dtype=np.float32)
+
+        r = NEAREST_CAR_RANGE
+        forward_n = float(np.clip((nearest_forward / r + 1.0) / 2.0, 0.0, 1.0))
+        lateral_n = float(np.clip((nearest_lateral / r + 1.0) / 2.0, 0.0, 1.0))
+        dist_n = float(np.clip(nearest_dist / r, 0.0, 1.0))
+        present = 1.0 if nearest_dist <= r else 0.0
+        return np.array([forward_n, lateral_n, dist_n, present], dtype=np.float32)
+
+    def _ego_state_features(self, ego_obj):
+        """Basic ego kinematics, normalized to [0, 1]."""
+        actor = ego_obj.metaDriveActor
+        speed_n = float(np.clip(actor.speed_km_h / max(actor.max_speed_km_h, 1e-6), 0.0, 1.0))
+        heading = actor.heading_theta
+        heading_sin_n = (math.sin(heading) + 1.0) / 2.0
+        heading_cos_n = (math.cos(heading) + 1.0) / 2.0
+        steering_n = float(np.clip((actor.steering + 1.0) / 2.0, 0.0, 1.0))
+        throttle_brake_n = float(np.clip((actor.throttle_brake + 1.0) / 2.0, 0.0, 1.0))
+        return np.array(
+            [speed_n, heading_sin_n, heading_cos_n, steering_n, throttle_brake_n], dtype=np.float32
+        )
+
+    def _build_observation(self):
+        ego_obj = self.scene.objects[0]
+        lane_lines = self._perceive_lane_lines(ego_obj.metaDriveActor)
+        nearest = self._nearest_vehicle_features(ego_obj)
+        ego_state = self._ego_state_features(ego_obj)
+        return np.concatenate([lane_lines, nearest, ego_state]).astype(np.float32)
 
     def get_obs(self):
         obs = np.asarray(self.observation, dtype=np.float32).flatten()
